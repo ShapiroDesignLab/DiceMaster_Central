@@ -163,42 +163,42 @@ class Bus:
             if not self.running and self.send_jobs.empty():
                 sleep(HYB_SLEEP_TIME)
                 continue
-            try:
-                # Periodically ping bus0
-                if time.time() > self.next_ping_time:
-                    self.__broadcast_ping()
+            # try:
+            # Periodically ping bus0
+            if time.time() > self.next_ping_time:
+                self.__broadcast_ping()
 
-                # Check if any jobs
-                if self.send_jobs.empty():
-                    sleep(WORK_SLEEP_TIME)
-                    continue
+            # Check if any jobs
+            if self.send_jobs.empty():
+                sleep(WORK_SLEEP_TIME)
+                continue
 
-                # Retrieve message from queue
-                msg = self.send_jobs.get()
-                
-                print(f"Executing Job type {msg[1]}, 1 for ping")
-                
-                # If different device, shutdown and open another spi dev
-                if self.last_spi_dev is not None and self.last_spi_dev.id != msg[0].id:
-                    self.last_spi_dev.down()
-                    msg[0].up()
-                self.last_spi_dev = msg[0]
-                
-                print(f"Upped spi device")
+            # Retrieve message from queue
+            msg = self.send_jobs.get()
+            
+            print(f"Executing Job type {msg[1]}, 1 for ping")
+            
+            # If different device, shutdown and open another spi dev
+            if self.last_spi_dev is not None and self.last_spi_dev.id != msg[0].id:
+                self.last_spi_dev.down()
+                msg[0].up()
+            self.last_spi_dev = msg[0]
+            
+            print(f"Upped spi device")
 
-                # Actually send message
-                rtn = msg[0].send_recv(msg[2])
-                
-                print(f"Received info")
+            # Actually send message
+            rtn = msg[0].send_recv(msg[2])
+            
+            print(f"Received info")
 
-                # Process return
-                if msg[1] is PING_CMD or msg[1] is HYB_CMD or msg[1] is RES_CMD:
-                    if rtn[0] == 255 and rtn[1] == 255:
-                        last_ping_time[msg[0].id] = time()
-                    else:
-                        print(f"Error ping response from SPI: {rtn[0], rtn[1]}")
-            except Exception as e:
-                print(f"Error in SPI communication: {e}")
+            # Process return
+            if msg[1] is PING_CMD or msg[1] is HYB_CMD or msg[1] is RES_CMD:
+                if rtn[0] == 255 and rtn[1] == 255:
+                    last_ping_time[msg[0].id] = time()
+                else:
+                    print(f"Error ping response from SPI: {rtn[0], rtn[1]}")
+            # except Exception as e:
+            #     print(f"Error in SPI communication: {e}")
 
 
 class Screen:
