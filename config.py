@@ -5,7 +5,7 @@ import os
 
 # Whether running on dev machines or in production
 # NOBUS = True means we are debugging
-NOBUS = True
+NOBUS = False
 DYNAMIC_LOADING = False
 
 SCREEN_BOOT_DELAY = 3
