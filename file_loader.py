@@ -24,8 +24,6 @@ class FileLoader:
     """
     Loads directory and gets file dictionary
     """
-    
-
     def __init__(self, root, clear_cache=True):
         self.uuid_dict = {}
         self.root_path = self.find_valid_sd_path(root)
@@ -40,6 +38,7 @@ class FileLoader:
         """Return the first directory found in root"""
         for directory in os.listdir(root):
             if os.path.isdir(os.path.join(root, directory)):
+                print(f"Found SD Root {os.path.join(root, directory)}")
                 return os.path.join(root, directory)
 
     def build_file_dict(self, root_path, depth=0):

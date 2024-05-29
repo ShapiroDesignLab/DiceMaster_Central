@@ -30,6 +30,8 @@ def main():
     file_loader = FileLoader(SD_ROOT_PATH)      # Load content
     bus, screens = init_screens()                    # Initialize Screens
     # imu = init_IMU()                            # Initialize IMU
+    
+    file_loader.visualize()
         
     # The App Loop
     while True:
