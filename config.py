@@ -34,13 +34,12 @@ def build_screen_config():
     """build screen dictionary according to numbers"""
     for bus in range(2):
         for dev in range(2):
+            if bus * 2 + dev == NUM_SCREEN:
+                return
             SCREEN_CFG.append({
                 "bus": bus,
                 "dev": dev
             })
-            if bus * 2 + dev == NUM_SCREEN:
-                return
-            
 build_screen_config()
 
 
