@@ -181,7 +181,7 @@ class Bus:
             # If different device, shutdown and open another spi dev
             if self.last_spi_dev is not None and self.last_spi_dev.id != msg[0].id:
                 self.last_spi_dev.down()
-                msg[0].up()
+            msg[0].up()
             self.last_spi_dev = msg[0]
             
             print(f"Upped spi device")
