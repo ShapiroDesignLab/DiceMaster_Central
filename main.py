@@ -17,7 +17,7 @@ def init_screens():
     screens = []
     bus_obj = Bus()
     for i, cfg in enumerate(SCREEN_CFG):
-        screens.append(Screen(i, cfg["bus"], cfg["dev"], bus_obj))
+        screens.append(Screen(i+1, cfg["bus"], cfg["dev"], bus_obj))
     bus_obj.run()
     return bus_obj, screens
 

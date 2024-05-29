@@ -27,7 +27,7 @@ IMG_RES_480SQ = 0
 # SPI Configuration
 BYTE_SIZE = 2**8
 DUMMY_BUFFER_SIZE = 4
-TOTAL_SPI_SEND_SIZE = 1024 + DUMMY_BUFFER_SIZE
+TOTAL_SPI_SEND_SIZE = 1024
 CHUNK_SIZE = 1016       # Maimum 1016 bytes (excluding 8 byte header for image)
 PING_INTERVAL = 5       # Interval for pinging screens, in seconds, default every 5 seconds
 RECV_BYTES = 32         # Return messages are 32 bytes long.
