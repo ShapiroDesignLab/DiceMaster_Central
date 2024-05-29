@@ -91,7 +91,9 @@ class Bus:
     def register(self, dev):
         """Register screen device to ping periodically and peform sleep/wake"""
         self.ping_devs.append(dev)
-        self.fixed_msgs = Bus.__build_reused_msgs(dev.id)
+        msgs = Bus.__build_reused_msgs(dev.id)
+        print(msgs)
+        self.fixed_msgs = msgs
 
     def run(self):
         """Start Bus process"""

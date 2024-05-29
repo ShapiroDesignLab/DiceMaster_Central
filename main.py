@@ -39,6 +39,9 @@ def main():
             file_loader.update_processors(_verbose=True)
             time.sleep(0.002)
         except KeyboardInterrupt:
+            del bus_obj
+            for screen in screens:
+                del screen
             print("[DEBUG][Main] Program Shutdown")
             exit()
 
