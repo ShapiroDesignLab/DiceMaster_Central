@@ -64,9 +64,7 @@ class SPIDevice:
     def send_recv(self, msg):
         """send and return received content"""
         assert self.awake
-        print(f"Sending {msg}")
         self.spi.writebytes(msg)           # Send the 1024-byte chunk
-        print("Data Sent")
         rtn = self.spi.readbytes(RECV_BYTES)   # Then receive
         return rtn
 
@@ -130,7 +128,6 @@ class Bus:
     def __broadcast_ping(self):
         """broadcast ping all screens"""
         for i, dev in enumerate(self.ping_devs):
-            print(f"Pinging device bus {dev.bus}, dev {dev.dev} with msg {self.fixed_msgs[i][0]}")
             self.queue((dev, PING_CMD, self.fixed_msgs[i][0]))
         self.next_ping_time = time.time() + SCREEN_PING_INTERNVAL
 
@@ -178,8 +175,6 @@ class Bus:
             # Retrieve message from queue
             msg = self.send_jobs.get()
             
-            print(f"Executing Job type {msg[1]}, 1 for ping")
-            
             # If different device, shutdown and open another spi dev
             if self.last_spi_dev is not None and self.last_spi_dev.id != msg[0].id:
                 self.last_spi_dev.down()
@@ -191,7 +186,7 @@ class Bus:
             # Actually send message
             rtn = msg[0].send_recv(msg[2])
             
-            print(f"Received info")
+            print(f"Received info '{rtn}' with length {len(rtn)}")
 
             # Process return
             if msg[1] is PING_CMD or msg[1] is HYB_CMD or msg[1] is RES_CMD:
