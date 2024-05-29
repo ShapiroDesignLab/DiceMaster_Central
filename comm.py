@@ -66,6 +66,7 @@ class SPIDevice:
         assert self.awake
         self.spi.writebytes(msg[2])           # Send the 1024-byte chunk
         rtn = self.spi.readbytes(RECV_BYTES)   # Then receive
+        return rtn
 
 
 class Bus:
@@ -128,7 +129,6 @@ class Bus:
         """broadcast ping all screens"""
         for i, dev in enumerate(self.ping_devs):
             print(f"Pinging device bus {dev.bus}, dev {dev.dev}")
-            print(self.fixed_msgs[i])
             self.queue((dev, PING_CMD, self.fixed_msgs[i][0]))
         self.next_ping_time = time.time() + SCREEN_PING_INTERNVAL
 

@@ -28,7 +28,7 @@ DB_PATH = os.path.join(os.path.expanduser("~"), ".dicemaster/fdb.sqlite")
 
 
 # Build config for screens
-NUM_SCREEN = 2
+NUM_SCREEN = 1
 SCREEN_CFG = []
 def build_screen_config():
     """build screen dictionary according to numbers"""
