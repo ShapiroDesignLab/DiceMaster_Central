@@ -69,6 +69,10 @@ class FileLoader:
     @staticmethod
     def _get_file_type(path):
         """Get type of file, out of IMG, """
+        # Ignore hidden files
+        if os.path.basename(path.lower()).startswith('.'):
+            return TYPE_UNKNOWN
+        
         # Find the last thing of the file name split by the dot operator
         ext = os.path.basename(path.lower()).split('.')[-1]
         if ext in TXT_EXTS:

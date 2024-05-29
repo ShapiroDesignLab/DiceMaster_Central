@@ -8,6 +8,7 @@ Protocols: see https://docs.google.com/document/d/1ovbKFz1-aYnTLMupWtqQHsDRdrbPb
 """
 
 import time
+from time import sleep
 from queue import *
 import threading
 import numpy as np
@@ -32,7 +33,7 @@ class SPIDevice:
         self.spi = SPIDummy(sid)
         if not NOBUS:
             self.spi = spidev.SpiDev()
-            self.spi.open()
+            self.spi.open(self.bus, self.device)
             self.spi.max_speed_hz = 9600000     # Set speed to 9.6 Mhz
             self.spi.mode = 0b00                # Set SPI Mode to 0
             self.spi.threewire = True
