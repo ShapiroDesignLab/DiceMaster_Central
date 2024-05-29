@@ -92,8 +92,7 @@ class Bus:
         """Register screen device to ping periodically and peform sleep/wake"""
         self.ping_devs.append(dev)
         msgs = Bus.__build_reused_msgs(dev.id)
-        # print(msgs)
-        self.fixed_msgs = msgs
+        self.fixed_msgs.append(msgs)
 
     def run(self):
         """Start Bus process"""
@@ -115,20 +114,15 @@ class Bus:
         ping_msg = template.copy()
         ping_msg[1] = 1
         
-        print(len(ping_msg))
-        
         # Hybernate message could be reused
         hyb_msg = template.copy()
         hyb_msg[1] = 255
         
-        print(len(hyb_msg))
-        
         # Restore screen message could be reused
         restore_msg = template.copy()
         restore_msg[1] = 254
-        print(len(restore_msg))
-        
-        return (ping_msg, hyb_msg, restore_msg)
+
+        return [ping_msg, hyb_msg, restore_msg]
 
     def __broadcast_ping(self):
         """broadcast ping all screens"""
@@ -208,7 +202,7 @@ class Screen:
 
     def __init__(self, uid, bus, dev, bus_obj):
         self.id = uid
-        self.spi_device = SPIDevice(id, bus, dev)
+        self.spi_device = SPIDevice(uid, bus, dev)
 
         # Image Transfer Records
         self.last_img_id = 0
@@ -317,7 +311,7 @@ class Screen:
 class SPIDummy:
     """Dummy class for debugging without connecting to SPI devices"""
 
-    def __init__(self, id):
+    def __init__(self, uid):
         self.commands = {
             1: "ping",
             3: "draw text",
@@ -325,7 +319,7 @@ class SPIDummy:
             127: "draw options",
             255: "sleep/wake",
         }
-        self.id = id
+        self.id = uid
         self.dummy_msg = [0] * RECV_BYTES
         self.dummy_msg[0] = self.id
         self.dummy_msg[3] = self.id
