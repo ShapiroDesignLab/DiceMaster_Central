@@ -130,7 +130,7 @@ class Bus:
     def __broadcast_ping(self):
         """broadcast ping all screens"""
         for i, dev in enumerate(self.ping_devs):
-            print(f"Pinging device bus {dev.bus}, dev {dev.dev}")
+            print(f"Pinging device bus {dev.bus}, dev {dev.dev} with msg {self.fixed_msgs[i][0]}")
             self.queue((dev, PING_CMD, self.fixed_msgs[i][0]))
         self.next_ping_time = time.time() + SCREEN_PING_INTERNVAL
 
