@@ -63,8 +63,7 @@ class FileLoader:
             dpath = os.path.join(root_path, directory)
             # Get all directories that are not hidden to be classes
             if os.path.isdir(dpath) and not directory.startswith('.'):
-                finder[directory] = self.build_file_dict(dpath, \
-                    depth+1)
+                finder[directory] = self.build_file_dict(dpath, depth+1)
         return finder
 
     @staticmethod
@@ -209,8 +208,7 @@ class VideoWrapper(FileWrapper):
             return ERR_NOT_LOADED
 
         # Get image path for next frame
-        img_path = os.path.join(self.processed_path, f"{ \
-                                self.next_frame_id}_{rotation}.jpg")
+        img_path = os.path.join(self.processed_path, f"{self.next_frame_id}_{rotation}.jpg")
         self.next_frame_id += 1
         if self.next_frame_id >= self.total_frame_cnt:
             self.next_frame_id = 0

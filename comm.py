@@ -166,8 +166,7 @@ class Bus:
                 msg = self.send_jobs.get()
                 
                 # If different device, shutdown and open another spi dev
-                if self.last_spi_dev is not None \
-                        and self.last_spi_dev != msg[0]:
+                if self.last_spi_dev is not None and self.last_spi_dev != msg[0]:
                     self.last_spi_dev.down()
                     msg[0].up()
                 self.last_spi_dev = msg[0]
@@ -317,10 +316,8 @@ class SPIDummy:
 
     def writebytes(self, content):
         """dummy write bytes function"""
-        print(f"[DEBUG][Screen {self.id}] Sending Content with \
-              {len(content)} bytes to device {content[0]}")
-        print(f"       [Screen {self.id}] Message type \
-              {self.commands[content[1]]} with computed length {content[2]*256 + content[3]}")
+        print(f"[DEBUG][Screen {self.id}] Sending Content with {len(content)} bytes to device {content[0]}")
+        print(f"       [Screen {self.id}] Message type {self.commands[content[1]]} with computed length {content[2]*256 + content[3]}")
         self.last_sign = content[4]
 
     def readbytes(self, n):
