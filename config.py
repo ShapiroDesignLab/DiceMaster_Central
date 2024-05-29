@@ -8,6 +8,9 @@ import os
 NOBUS = True
 DYNAMIC_LOADING = False
 
+SCREEN_BOOT_DELAY = 3
+SCREEN_PING_INTERNVAL = 10
+
 # Configure SD card path
 SD_ROOT_PATH = "/media/dicemaster/"
 if NOBUS:
@@ -39,3 +42,20 @@ def build_screen_config():
                 return
             
 build_screen_config()
+
+
+# Draw Text Options
+ALIGN_LEFT = 0
+ALIGN_RIGHT = 1
+ALIGN_TOP = 2
+ALIGN_BOTTOM = 3
+ALIGN_CENTER = 4
+
+TEXT_WIDTH = 12
+TEXT_HEIGHT = 16
+TEXT_PADDING = 4
+
+MAX_TEXT_LEN = 256
+FONT_SIZE = 10
+
+SCREEN_WIDTH = 480

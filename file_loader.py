@@ -18,27 +18,13 @@ from media_processor import VideoProcessor, ImageProcessor
 import config
 
 # Macros
-
-
-IMG_WIDTH_FULL = 480
-IMG_HEIGHT_FULL = 480
-IMG_WIDTH_HALF = 240
-IMG_HEIGHT_HALF = 240
-
-ERR_NOT_LOADED = -1
+from utils import *
 
 class FileLoader:
     """
     Loads directory and gets file dictionary
     """
-    TYPE_TXT = 1
-    TYPE_IMG = 2
-    TYPE_VID = 3
-    TYPE_UNKNOWN = 0
-
-    TXT_EXTS = ['txt', 'md', 'rtf']
-    IMG_EXTS = ['jpg', 'png', 'jpeg', 'bmp', 'heic', 'heif']
-    VID_EXTS = ['mpeg', 'mp4', 'mov', 'avi']
+    
 
     def __init__(self, root, clear_cache=True):
         self.uuid_dict = {}
@@ -50,7 +36,6 @@ class FileLoader:
         if clear_cache:
             os.system(f"rm -r {config.CACHE_PATH}")
         
-
     def find_valid_sd_path(self, root):
         """Return the first directory found in root"""
         for directory in os.listdir(root):
@@ -66,7 +51,7 @@ class FileLoader:
             finder = []
             for f in os.listdir(root_path):
                 f = os.path.join(root_path, f)
-                if os.path.isfile(f) and self._get_file_type(f) is not FileLoader.TYPE_UNKNOWN:
+                if os.path.isfile(f) and self._get_file_type(f) is not TYPE_UNKNOWN:
                     wrapper = self.factory(f)
                     finder.append((f, wrapper))
                     self.uuid_dict[wrapper.uuid] = wrapper
@@ -75,10 +60,10 @@ class FileLoader:
         # Otherwise Recurse down
         finder = {}  # name from macOS finder :)
         for directory in os.listdir(root_path):
-            directory = os.path.join(root_path, directory)
+            dpath = os.path.join(root_path, directory)
             # Get all directories that are not hidden to be classes
-            if os.path.isdir(directory) and not directory.startswith('.'):
-                finder[directory] = self.build_file_dict(directory, \
+            if os.path.isdir(dpath) and not directory.startswith('.'):
+                finder[directory] = self.build_file_dict(dpath, \
                     depth+1)
         return finder
 
@@ -87,32 +72,33 @@ class FileLoader:
         """Get type of file, out of IMG, """
         # Find the last thing of the file name split by the dot operator
         ext = os.path.basename(path.lower()).split('.')[-1]
-        if ext in FileLoader.TXT_EXTS:
-            return FileLoader.TYPE_TXT
-        if ext in FileLoader.IMG_EXTS:
-            return FileLoader.TYPE_IMG
-        if ext in FileLoader.VID_EXTS:
-            return FileLoader.TYPE_VID
-        return FileLoader.TYPE_UNKNOWN
+        if ext in TXT_EXTS:
+            return TYPE_TXT
+        if ext in IMG_EXTS:
+            return TYPE_IMG
+        if ext in VID_EXTS:
+            return TYPE_VID
+        return TYPE_UNKNOWN
 
     def factory(self, file_path):
         ftype = FileLoader._get_file_type(file_path)
-        if ftype == FileLoader.TYPE_TXT:
+        if ftype == TYPE_TXT:
             return TextWrapper(file_path)
-        if ftype == FileLoader.TYPE_IMG:
+        if ftype == TYPE_IMG:
             return ImageWrapper(file_path)
-        if ftype == FileLoader.TYPE_VID:
+        if ftype == TYPE_VID:
             return VideoWrapper(file_path)
 
     def iterate(self):
         """Generator for iterating over the file dictionary"""
-        for course in self.finder.keys():
-            for session in self.finder[course].keys():
-                for activity in self.finder[course][session].keys():
-                    for f in self.finder[course][session][activity]:
+        for (course, dc) in self.finder.items():
+            for (session, ds) in dc.items():
+                for (activity, la) in ds.items():
+                    for f in la:
                         yield course, session, activity, f
 
     def visualize(self):
+        """Debug only: print valid files detected"""
         print("Found the following valid files: ")
         for _,_,_, f in self.iterate():
             print(f[0])

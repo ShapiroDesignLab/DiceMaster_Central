@@ -143,8 +143,51 @@ class MPU6050:
         time.sleep(2)
 
     def return_angles(self):
-        start = time.ticks_us()
+        start = time.time_ns()*1000
         gX, gY = self.read_gyro()[:-1]
         Acc_X, Acc_Y = self.calculate_acc_angles()
-        dt = time.ticks_diff(time.ticks_us(), start)/10**6
+        dt = (time.time_ns()*1000 - start)/10**6
         return self.pitchAngle.update(gY, Acc_Y, dt), self.rollAngle.update(gX, Acc_X, dt), dt
+
+
+class MPU6050Dummy:
+    def __init__(self, busid, SDA, SCL, led=25):
+        print("Initializing IMU Dummy")
+        self.x_acc_bias = 0
+        self.y_acc_bias = 0
+
+    def read_acc(self):
+        return (0.5, 0.6, 0.7)
+
+    def read_gyro(self):
+        return (0.1, 0.2, 0.3)
+
+    def blink(self, t):
+        print("[MPU DUMMY] Called Blink Function")
+
+    def calculate_acc_angles(self):
+        x, y, z = [], [], []
+        for i in range(3):
+            acc_data = self.read_acc()
+            x.append(acc_data[0])
+            y.append(acc_data[1])
+            z.append(acc_data[2])
+        ax = sum(x)/3
+        ay = sum(y)/3
+        az = sum(z)/3
+        x_angles = degrees(atan(ay/((ax**2 + az**2)**0.5)))
+        y_angles = degrees(atan(ax/((ay**2 + az**2)**0.5)))-5.18
+        return (x_angles-self.x_acc_bias, y_angles-self.y_acc_bias)
+
+    def callibrate_gyro(self):
+        print("calibrating DUMMY MPU6050 GYRO")
+        time.sleep(2)
+        print("calibrated DUMMY MPU6050 GYRO")
+
+    def callibrate_acc(self):
+        print("calibrating DUMMY MPU6050 ACC")
+        time.sleep(2)
+        print("calibrated DUMMY MPU6050 ACC")
+
+    def return_angles(self):
+        print("[IMU DUMMY] Called return angles")
