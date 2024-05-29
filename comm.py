@@ -31,6 +31,8 @@ class SPIDevice:
         self.dev = dev
         self.id = sid
         self.spi = SPIDummy(sid)
+        
+        print("Bus:", self.bus, "dev: ", self.dev)
         if not NOBUS:
             self.spi = spidev.SpiDev()
             self.spi.open(self.bus, self.dev)
