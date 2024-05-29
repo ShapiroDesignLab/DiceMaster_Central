@@ -64,8 +64,8 @@ class SPIDevice:
     def send_recv(self, msg):
         """send and return received content"""
         assert self.awake
-        print(f"Sending {msg[2]}")
-        self.spi.writebytes(msg[2])           # Send the 1024-byte chunk
+        print(f"Sending {msg}")
+        self.spi.writebytes(msg)           # Send the 1024-byte chunk
         print("Data Sent")
         rtn = self.spi.readbytes(RECV_BYTES)   # Then receive
         return rtn
