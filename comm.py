@@ -32,9 +32,11 @@ class SPIDevice:
         self.spi = SPIDummy(sid)
         if not NOBUS:
             self.spi = spidev.SpiDev()
+            self.spi.open()
             self.spi.max_speed_hz = 9600000     # Set speed to 9.6 Mhz
             self.spi.mode = 0b00                # Set SPI Mode to 0
             self.spi.threewire = True
+            self.spi.close()
         self.awake = False
 
     def __del__(self):
@@ -43,8 +45,9 @@ class SPIDevice:
 
     def up(self):
         """select device"""
-        self.awake = True
-        self.spi.open(self.bus, self.dev)
+        if self.awake is False:
+            self.awake = True
+            self.spi.open(self.bus, self.dev)
 
     def down(self):
         """close spi connection"""

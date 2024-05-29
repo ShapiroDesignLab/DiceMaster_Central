@@ -34,7 +34,7 @@ class FileLoader:
         
         self.finder = self.build_file_dict(self.root_path)
         if clear_cache:
-            os.system(f"rm -r {config.CACHE_PATH}")
+            os.system(f"rm -r {config.CACHE_PATH}/*")
         
     def find_valid_sd_path(self, root):
         """Return the first directory found in root"""
