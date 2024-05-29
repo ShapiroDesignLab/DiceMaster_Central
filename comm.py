@@ -176,14 +176,20 @@ class Bus:
                 # Retrieve message from queue
                 msg = self.send_jobs.get()
                 
+                print(f"Executing Job type {msg[1]}, 1 for ping")
+                
                 # If different device, shutdown and open another spi dev
-                if self.last_spi_dev is not None and self.last_spi_dev != msg[0]:
+                if self.last_spi_dev is not None and self.last_spi_dev.id != msg[0].id:
                     self.last_spi_dev.down()
                     msg[0].up()
                 self.last_spi_dev = msg[0]
+                
+                print(f"Upped spi device")
 
                 # Actually send message
                 rtn = msg[0].send_recv(msg[2])
+                
+                print(f"Received info")
 
                 # Process return
                 if msg[1] is PING_CMD or msg[1] is HYB_CMD or msg[1] is RES_CMD:
