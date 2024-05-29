@@ -92,7 +92,7 @@ class Bus:
         """Register screen device to ping periodically and peform sleep/wake"""
         self.ping_devs.append(dev)
         msgs = Bus.__build_reused_msgs(dev.id)
-        print(msgs)
+        # print(msgs)
         self.fixed_msgs = msgs
 
     def run(self):
@@ -110,17 +110,24 @@ class Bus:
         # Empty Message with ID
         template = ZERO_MSG.copy()
         template[0] = screen_id
+        
         # Ping message could be reused
         ping_msg = template.copy()
-        ping_msg[1] = 1  # Ping message could be reused
-        ping_msg = template.copy()
         ping_msg[1] = 1
+        
+        print(len(ping_msg))
+        
         # Hybernate message could be reused
         hyb_msg = template.copy()
         hyb_msg[1] = 255
+        
+         print(len(hyb_msg))
+        
         # Restore screen message could be reused
         restore_msg = template.copy()
         restore_msg[1] = 254
+         print(len(res_msg))
+        
         return (ping_msg, hyb_msg, restore_msg)
 
     def __broadcast_ping(self):
