@@ -121,12 +121,12 @@ class Bus:
         hyb_msg = template.copy()
         hyb_msg[1] = 255
         
-         print(len(hyb_msg))
+        print(len(hyb_msg))
         
         # Restore screen message could be reused
         restore_msg = template.copy()
         restore_msg[1] = 254
-         print(len(res_msg))
+        print(len(restore_msg))
         
         return (ping_msg, hyb_msg, restore_msg)
 
