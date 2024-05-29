@@ -18,7 +18,8 @@ def init_screens():
     bus_obj = Bus()
     for i, cfg in enumerate(SCREEN_CFG):
         screens.append(Screen(i, cfg["bus"], cfg["dev"], bus_obj))
-    return screens
+    bus_obj.run()
+    return bus_obj, screens
 
 def init_IMU():
     if NOBUS:
@@ -27,7 +28,7 @@ def init_IMU():
 
 def main():
     file_loader = FileLoader(SD_ROOT_PATH)      # Load content
-    screens = init_screens()                    # Initialize Screens
+    bus, screens = init_screens()                    # Initialize Screens
     # imu = init_IMU()                            # Initialize IMU
         
     # The App Loop

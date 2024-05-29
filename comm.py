@@ -32,8 +32,8 @@ class SPIDevice:
         self.spi = SPIDummy(sid)
         if not NOBUS:
             self.spi = spidev.SpiDev()
-            self.spi.max_speed_hz = 96e5  # Set speed to 9.6 Mhz
-            self.spi.mode = 0b00          # Set SPI Mode to 0
+            self.spi.max_speed_hz = 9600000     # Set speed to 9.6 Mhz
+            self.spi.mode = 0b00                # Set SPI Mode to 0
             self.spi.threewire = True
         self.awake = False
 
