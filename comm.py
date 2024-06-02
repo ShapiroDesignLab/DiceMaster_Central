@@ -180,6 +180,7 @@ class Bus:
             # Actually send message
             msg[0].send(msg[2])
             print(f"Sent message with length {len(msg[2])}")
+            time.sleep(0.01)
 
 class Screen:
     """
