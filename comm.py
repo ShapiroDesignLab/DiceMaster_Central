@@ -24,6 +24,18 @@ from utils import *
 from PIL import ImageFont, ImageDraw, Image
 
 
+
+commands = {
+    PING_CMD: "ping",
+    TXT_CMD: "draw text",
+    IMG_CMD: "image header",
+    OPT_CMD: "draw options",
+    OPT_END: "options end",
+    RES_CMD: "restore",
+    HYB_CMD: "sleep"
+}
+
+
 class SPIDevice:
     """SPI Device for Screen communication"""
     def __init__(self, sid, bus, dev):
@@ -31,7 +43,7 @@ class SPIDevice:
         self.dev = dev
         self.id = sid
         self.spi = SPIDummy(sid)
-        
+
         print("Bus:", self.bus, "dev: ", self.dev)
         if not NOBUS:
             self.spi = spidev.SpiDev()
@@ -61,13 +73,10 @@ class SPIDevice:
         """See if bus is awake,  usually unnecessary"""
         return self.awake
 
-    def send_recv(self, msg):
+    def send(self, msg):
         """send and return received content"""
         assert self.awake
         self.spi.writebytes(msg)           # Send the 1024-byte chunk
-        rtn = self.spi.readbytes(RECV_BYTES)   # Then receive
-        return rtn
-
 
 class Bus:
     """Bus class"""
@@ -77,9 +86,8 @@ class Bus:
         self.last_spi_dev = None
         self.running = False
         self.ping_devs = []
-        self.ping_success_time = [time.time()] * NUM_SCREEN
-        self.next_ping_time = time.time()
-        self.fixed_msgs = []
+        self.next_ping_time = time.monotonic()
+        self.fixed_msgs = self.__build_reused_msgs()
         self.thread = threading.Thread(target=self.__comm, args=(self.next_ping_time,))
 
     def __del__(self):
@@ -92,50 +100,31 @@ class Bus:
     def register(self, dev):
         """Register screen device to ping periodically and peform sleep/wake"""
         self.ping_devs.append(dev)
-        msgs = Bus.__build_reused_msgs(dev.id)
-        self.fixed_msgs.append(msgs)
 
     def run(self):
         """Start Bus process"""
-        self.next_ping_time = time.time() + SCREEN_BOOT_DELAY
+        self.next_ping_time = time.monotonic() + SCREEN_BOOT_DELAY
         self.running = True
         self.thread.start()
 
-    def get_screen_status(self):
-        """Get screen responses"""
-        return [time.time()-t for t in self.ping_success_time]
-
     @staticmethod
-    def __build_reused_msgs(screen_id):
-        # Empty Message with ID
-        template = ZERO_MSG.copy()
-        template[0] = screen_id
-        
-        # Ping message could be reused
-        ping_msg = template.copy()
-        ping_msg[1] = 1
-        
-        # Hybernate message could be reused
-        hyb_msg = template.copy()
-        hyb_msg[1] = 255
-        
-        # Restore screen message could be reused
-        restore_msg = template.copy()
-        restore_msg[1] = 254
-
+    def __build_reused_msgs():
+        ping_msg = [1] * 5                      # Ping message could be reused
+        hyb_msg = [253] * 5                     # Hybernate message could be reused
+        restore_msg = [254] * 5                 # Restore screen message could be reused
         return [ping_msg, hyb_msg, restore_msg]
 
     def __broadcast_ping(self):
         """broadcast ping all screens"""
         for i, dev in enumerate(self.ping_devs):
-            self.queue((dev, PING_CMD, self.fixed_msgs[i][0]))
-        self.next_ping_time = time.time() + SCREEN_PING_INTERNVAL
+            self.queue((dev, PING_CMD, self.fixed_msgs[0]))
+        self.next_ping_time = time.monotonic() + SCREEN_PING_INTERNVAL
 
     # Hybernate Functions
     def hybernate(self):
         """Put ESP32 to hybernation"""
         for i, dev in enumerate(self.ping_devs):
-            self.queue((dev, HYB_CMD, self.fixed_msgs[i][1]))
+            self.queue((dev, HYB_CMD, self.fixed_msgs[1]))
         self.running = False
 
     # Wake Functions
@@ -145,7 +134,7 @@ class Bus:
         """
         self.running = True
         for i, dev in enumerate(self.ping_devs):
-            self.queue((dev, RES_CMD, self.fixed_msgs[i][2]))
+            self.queue((dev, RES_CMD, self.fixed_msgs[2]))
 
     # Queueing functions
     def queue(self, msg):
@@ -157,14 +146,14 @@ class Bus:
         self.send_jobs.put(msg)
 
     # Communication Always On Thread
-    def __comm(self, last_ping_time):
+    def __comm(self):
         while True:
             if not self.running and self.send_jobs.empty():
                 sleep(HYB_SLEEP_TIME)
                 continue
             # try:
             # Periodically ping bus0
-            if time.time() > self.next_ping_time:
+            if time.monotonic() > self.next_ping_time:
                 self.__broadcast_ping()
 
             # Check if any jobs
@@ -180,23 +169,10 @@ class Bus:
                 self.last_spi_dev.down()
             msg[0].up()
             self.last_spi_dev = msg[0]
-            
-            print(f"Upped spi device")
+            print("Upped spi device")
 
             # Actually send message
-            rtn = msg[0].send_recv(msg[2])
-            
-            print(f"Received info '{rtn}' with length {len(rtn)}")
-
-            # Process return
-            if msg[1] is PING_CMD or msg[1] is HYB_CMD or msg[1] is RES_CMD:
-                if rtn[0] == 255 and rtn[1] == 255:
-                    last_ping_time[msg[0].id] = time()
-                else:
-                    print(f"Error ping response from SPI: {rtn[0], rtn[1]}")
-            # except Exception as e:
-            #     print(f"Error in SPI communication: {e}")
-
+            msg[0].send(msg[2])
 
 class Screen:
     """
@@ -217,7 +193,6 @@ class Screen:
     # Image Functions
     def draw_img(self, img_bytes, img_res=IMG_RES_480SQ, frame_time=0):
         """given an image in bytes, transfer the image over"""
-        self.last_img_id = (self.last_img_id + 1) % 256
         chunks = self.__make_img_chunks(
             img_bytes, CHUNK_SIZE, self.last_img_id, img_res, frame_time)
         # We Need Async Implementation (which it is now!)
@@ -252,19 +227,25 @@ class Screen:
         return chunks
 
     # Text Functions
-    def draw_text(self, text_list):
+    def draw_text(self, color, text_list):
         """Draw Text on screen"""
         text_bytes = []
         # Convert to binary
-        for text in text_list:
-            tb = bytes(text, 'utf-8')
+        for text, _ in text_list:
+            tb = bytearray(text, encoding='utf-8')
             if len(text_bytes) < MAX_TEXT_LEN:
                 text_bytes.append(tb)
             else:
                 print(f"WARNING: single line of text longer than maximum of {MAX_TEXT_LEN} bytes!")
+                
+        msg = [TXT_CMD, color[0], color[1], color[2]]
         # Compute cursor positions
         cursor_pos = Screen.__compute_text_cursor_position(text_list)
-    
+        for i, (text, font) in enumerate(text_list):
+            msg.extend([cursor_pos[i][0], cursor_pos[i][1], font, len(text_bytes[i])])
+            msg.extend(text_bytes[i])
+        self.bus.queue((self.spi_device, TXT_CMD, msg))
+        
     @staticmethod
     def __compute_text_cursor_position(text_list):
         """Computes list of tuples x,y as cursor locations for text"""
@@ -287,11 +268,11 @@ class Screen:
         return cursor_pos
 
     # Option Menu Related Functions
-    def draw_menu(self, menu_items):
+    def draw_option(self, menu_items):
         """Draw Menu on screen"""
         pass
-    
-    
+
+
     # Generic Message Functions
     @staticmethod
     def __build_msg(spi_device, command, content):
@@ -315,29 +296,14 @@ class SPIDummy:
     """Dummy class for debugging without connecting to SPI devices"""
 
     def __init__(self, uid):
-        self.commands = {
-            1: "ping",
-            3: "draw text",
-            7: "image chunk",
-            127: "draw options",
-            255: "sleep/wake",
-        }
         self.id = uid
-        self.dummy_msg = [0] * RECV_BYTES
-        self.dummy_msg[0] = self.id
-        self.dummy_msg[3] = self.id
         self.last_sign = 0
 
     def writebytes(self, content):
         """dummy write bytes function"""
         print(f"[DEBUG][Screen {self.id}] Sending Content with {len(content)} bytes to device {content[0]}")
-        print(f"       [Screen {self.id}] Message type {self.commands[content[1]]} with computed length {content[2]*256 + content[3]}")
+        print(f"       [Screen {self.id}] Message type {commands[content[1]]} with computed length {content[2]*256 + content[3]}")
         self.last_sign = content[4]
-
-    def readbytes(self, n):
-        """readbytes dummy function"""
-        print(f"[DEBUG][Screen {self.id}] read {n} bytes")
-        return self.dummy_msg
 
     def close(self):
         """close connection dummy function"""

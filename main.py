@@ -10,6 +10,7 @@ from file_loader import FileLoader
 from comm import Screen, Bus
 from sensor import MPU6050, MPU6050Dummy
 from config import *
+from utils import *
 
 
 def init_screens():
@@ -30,18 +31,15 @@ def main():
     file_loader = FileLoader(SD_ROOT_PATH)      # Load content
     bus, screens = init_screens()                    # Initialize Screens
     # imu = init_IMU()                            # Initialize IMU
-    
-    file_loader.visualize()
-        
+
     # The App Loop
     while True:
         try:
             file_loader.update_processors(_verbose=True)
-            time.sleep(0.002)
+            screens[0].draw_text(COLOR_BABY_BLUE, ("Hello World", 1))
+            time.sleep(1)
+            
         except KeyboardInterrupt:
-            del bus_obj
-            for screen in screens:
-                del screen
             print("[DEBUG][Main] Program Shutdown")
             exit()
 

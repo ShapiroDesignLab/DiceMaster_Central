@@ -68,6 +68,8 @@ class MPU6050:
         qz = (ax - ay) / (4 * qw)
         return [qw, qx, qy, qz]
 
+
+    # READ WORKS
     def poll_sensor(self):
         while self.running:
             accel_data = self.read_sensor_data()[:3]

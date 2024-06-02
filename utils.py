@@ -26,20 +26,20 @@ IMG_RES_480SQ = 0
 
 # SPI Configuration
 BYTE_SIZE = 2**8
-DUMMY_BUFFER_SIZE = 4
-TOTAL_SPI_SEND_SIZE = 1024
-CHUNK_SIZE = 1016       # Maimum 1016 bytes (excluding 8 byte header for image)
+# DUMMY_BUFFER_SIZE = 4
+# TOTAL_SPI_SEND_SIZE = 1024 + DUMMY_BUFFER_SIZE
+CHUNK_SIZE = 1020       # Maimum 1016 bytes (excluding 8 byte header for image)
 PING_INTERVAL = 5       # Interval for pinging screens, in seconds, default every 5 seconds
-RECV_BYTES = 32         # Return messages are 32 bytes long.
 WORK_SLEEP_TIME = 0.002  # 500Hz update frequency when running
 HYB_SLEEP_TIME = 0.2    # 5 Hz update frequency when in hybernation
 
 # Protocl Macros
 PING_CMD = 1
 IMG_CMD = 3
-TXT_CMD = 7
-OPT_CMD = 15
-RES_CMD = 254
-HYB_CMD = 255
+TXT_CMD = 31
+OPT_CMD = 63
+OPT_END = 64
+RES_CMD = 253
+HYB_CMD = 254
 
-ZERO_MSG = [0] * TOTAL_SPI_SEND_SIZE
+COLOR_BABY_BLUE = (137, 207, 240)
