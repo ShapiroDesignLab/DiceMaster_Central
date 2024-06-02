@@ -83,6 +83,7 @@ class SPIDevice:
         """send and return received content"""
         assert self.awake
         print(f"Written {len(msg)}")
+        print(f"Sent {msg}")
         self.spi.writebytes(msg)           # Send the chunk
 
 class Bus:
