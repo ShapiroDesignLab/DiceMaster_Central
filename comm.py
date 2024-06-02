@@ -88,7 +88,7 @@ class Bus:
         self.ping_devs = []
         self.next_ping_time = time.monotonic()
         self.fixed_msgs = self.__build_reused_msgs()
-        self.thread = threading.Thread(target=self.__comm, args=(self.next_ping_time,))
+        self.thread = threading.Thread(target=self.__comm)
 
     def __del__(self):
         """stop communications"""
