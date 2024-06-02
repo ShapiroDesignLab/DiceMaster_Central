@@ -25,6 +25,12 @@ from PIL import ImageFont, ImageDraw, Image
 
 
 
+def HIBYTE(val):
+    return (val >> 8) & 0xFF
+
+def LOBYTE(val):
+    return val & 0xFF
+
 commands = {
     PING_CMD: "ping",
     TXT_CMD: "draw text",
@@ -233,6 +239,7 @@ class Screen:
         # Convert to binary
         for (text, _) in text_list:
             tb = bytearray(text, encoding='utf-8')
+            tb.append(0)
             if len(text_bytes) < MAX_TEXT_LEN:
                 text_bytes.append(tb)
             else:
@@ -242,7 +249,9 @@ class Screen:
         # Compute cursor positions
         cursor_pos = Screen.__compute_text_cursor_position(text_list)
         for i, (text, font) in enumerate(text_list):
-            msg.extend([cursor_pos[i][0], cursor_pos[i][1], font, len(text_bytes[i])])
+            msg.extend([HIBYTE(cursor_pos[i][0]), LOBYTE(cursor_pos[i][0]),
+                        HIBYTE(cursor_pos[i][1]), LOBYTE(cursor_pos[i][1]), 
+                        font, len(text_bytes[i])])
             msg.extend(text_bytes[i])
         self.bus.queue((self.spi_device, TXT_CMD, msg))
         
