@@ -231,7 +231,7 @@ class Screen:
         """Draw Text on screen"""
         text_bytes = []
         # Convert to binary
-        for text, _ in text_list:
+        for (text, _) in text_list:
             tb = bytearray(text, encoding='utf-8')
             if len(text_bytes) < MAX_TEXT_LEN:
                 text_bytes.append(tb)

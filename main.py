@@ -36,7 +36,7 @@ def main():
     while True:
         try:
             file_loader.update_processors(_verbose=True)
-            screens[0].draw_text(COLOR_BABY_BLUE, ("Hello World", 1))
+            screens[0].draw_text(COLOR_BABY_BLUE, [("Hello World", 1)])
             time.sleep(1)
             
         except KeyboardInterrupt:
