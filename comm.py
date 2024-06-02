@@ -253,14 +253,15 @@ class Screen:
         
         # Load your specific fixed-width font and size
         font = ImageFont.truetype('unifont-12.1.02.ttf', FONT_SIZE)
-        img = Image.new('RGB', (1, 1))
-        draw = ImageDraw.Draw(img)
+        bbox = [font.getbbox(text[0]) for text in text_list]
+        widths = [w[2] - w[0] for w in bbox]
+        heights = [h[3] - h[1] for h in bbox]
         
         # Get size of the text
-        width = max(draw.textsize(text) for text in text_list)
+        width = max(widths)
         x_cursor = max(0, (SCREEN_WIDTH - width) // 2)
 
-        height = draw.textsize(text_list[0], font=font)
+        height = max(heights)
         gap = height + TEXT_PADDING * (len(text_list) > 1)
         y_start = (SCREEN_WIDTH-gap*len(text_list)+TEXT_PADDING) // 2
         for i, text in enumerate(text_list):
