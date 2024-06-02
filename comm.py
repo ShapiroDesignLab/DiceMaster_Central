@@ -117,9 +117,9 @@ class Bus:
 
     @staticmethod
     def __build_reused_msgs():
-        ping_msg = [1] * 5                      # Ping message could be reused
-        hyb_msg = [253] * 5                     # Hybernate message could be reused
-        restore_msg = [254] * 5                 # Restore screen message could be reused
+        ping_msg = [1] * 8                      # Ping message could be reused
+        hyb_msg = [253] * 8                     # Hybernate message could be reused
+        restore_msg = [254] * 8                 # Restore screen message could be reused
         return [ping_msg, hyb_msg, restore_msg]
 
     def __broadcast_ping(self):
@@ -151,7 +151,10 @@ class Bus:
         msg = (spi dev, command, msg)
         """
         assert len(msg)==3
-        self.send_jobs.put(msg)
+        padded_msg = msg[2]
+        pad_len = (4 - (len(padded_msg) % 4)) % 4
+        padded_msg.extend([0] * pad_len)
+        self.send_jobs.put((msg[0], msg[1], padded_msg))
 
     # Communication Always On Thread
     def __comm(self):
