@@ -179,6 +179,7 @@ class Bus:
 
             # Actually send message
             msg[0].send(msg[2])
+            print(f"Sent message with length {len(msg[2])}")
 
 class Screen:
     """
