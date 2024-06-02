@@ -37,7 +37,7 @@ def main():
         try:
             file_loader.update_processors(_verbose=True)
             screens[0].draw_text(COLOR_BABY_BLUE, [("Hello World", 1)])
-            time.sleep(1)
+            time.sleep(5)
             
         except KeyboardInterrupt:
             print("[DEBUG][Main] Program Shutdown")
