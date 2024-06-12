@@ -55,7 +55,7 @@ class SPIDevice:
             self.spi = spidev.SpiDev()
             self.spi.open(self.bus, self.dev)
             self.spi.max_speed_hz = 96000
-            self.spi.mode = 0b00                # Set SPI Mode to 0
+            self.spi.mode = 0b01                # Set SPI Mode to 0
             # self.spi.threewire = True
             self.spi.close()
         self.awake = False
