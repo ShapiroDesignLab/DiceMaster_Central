@@ -37,7 +37,9 @@ def main():
         try:
             file_loader.update_processors(_verbose=True)
             # screens[0].draw_text(COLOR_BABY_BLUE, [("Hello World", 1)])
-            screens[0].send_array(bytearray(list(range(50, 255))))
+            l = list(range(50, 255))
+            print(l)
+            screens[0].send_array(bytearray(l))
             time.sleep(3)
             
         except KeyboardInterrupt:
