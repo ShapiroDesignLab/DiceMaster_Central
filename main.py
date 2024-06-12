@@ -32,7 +32,7 @@ def main():
     bus, screens = init_screens()                    # Initialize Screens
     # imu = init_IMU()                            # Initialize IMU
 
-    l = list(range(5, 240))
+    l = list(range(128, 255))
     print(l)
     br = bytearray(l)
 
