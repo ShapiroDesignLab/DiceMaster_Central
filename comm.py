@@ -54,7 +54,7 @@ class SPIDevice:
         if not NOBUS:
             self.spi = spidev.SpiDev()
             self.spi.open(self.bus, self.dev)
-            self.spi.max_speed_hz = 960000
+            self.spi.max_speed_hz = 96000
             self.spi.mode = 0b00                # Set SPI Mode to 0
             # self.spi.threewire = True
             self.spi.close()
@@ -84,7 +84,7 @@ class SPIDevice:
         assert self.awake
         print(f"Written {len(msg)}")
         print(f"Sent {msg}")
-        self.spi.xfer(msg)           # Send the chunk
+        self.spi.writebytes(msg)           # Send the chunk
 
 class Bus:
     """Bus class"""
