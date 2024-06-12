@@ -310,7 +310,7 @@ class Screen:
 
 
     def send_array(self, barray):
-        self.bus.queue(self.__build_msg(self.spi_device, TXT_CMD, barray))
+        self.bus.queue((self.spi_device, TXT_CMD, barray))
 
 
 class SPIDummy:
