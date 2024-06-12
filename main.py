@@ -32,9 +32,9 @@ def main():
     bus, screens = init_screens()                    # Initialize Screens
     # imu = init_IMU()                            # Initialize IMU
 
-    br = bytearray(50)
-    for i in range(51, 240):
-        br.extend(bytes(i))
+    l = list(range(5, 240))
+    print(l)
+    br = bytearray(l)
 
     print(br)
 
