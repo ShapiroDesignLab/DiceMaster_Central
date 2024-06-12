@@ -162,10 +162,10 @@ class Bus:
             if not self.running and self.send_jobs.empty():
                 sleep(HYB_SLEEP_TIME)
                 continue
-            # try:
+
             # Periodically ping bus0
-            if time.monotonic() > self.next_ping_time:
-                self.__broadcast_ping()
+            # if time.monotonic() > self.next_ping_time:
+            #     self.__broadcast_ping()
 
             # Check if any jobs
             if self.send_jobs.empty():
@@ -176,16 +176,15 @@ class Bus:
             msg = self.send_jobs.get()
             
             # If different device, shutdown and open another spi dev
-            if self.last_spi_dev is not None and self.last_spi_dev.id != msg[0].id:
-                self.last_spi_dev.down()
+            self.last_spi_dev.down()
+            sleep(0.001)
             msg[0].up()
             self.last_spi_dev = msg[0]
-            print("Upped spi device")
 
             # Actually send message
             msg[0].send(msg[2])
             print(f"Sent message with length {len(msg[2])}")
-            time.sleep(0.01)
+            time.sleep(0.009)
 
 class Screen:
     """
@@ -210,7 +209,8 @@ class Screen:
             img_bytes, CHUNK_SIZE, self.last_img_id, img_res, frame_time)
         # We Need Async Implementation (which it is now!)
         for chunk in chunks:
-            self.bus.queue(self.__build_msg(self.spi_device, IMG_CMD, chunk))
+            pass
+            # self.bus.queue(self.__build_msg(self.spi_device, IMG_CMD, chunk))
 
     @staticmethod
     def __make_img_chunks(img_bytearray, chunk_size, img_id, img_res=IMG_RES_480SQ, frame_time=0):
@@ -291,22 +291,26 @@ class Screen:
 
 
     # Generic Message Functions
-    @staticmethod
-    def __build_msg(spi_device, command, content):
-        """Build a message body from command and content, calculates lengths, parity, etc"""
-        assert 0 <= command and command <= 255
-        len_hibyte = len(content) // 256
-        len_lobyte = len(content) % 256
-        msg = [spi_device.id, command, len(content), len_hibyte, len_lobyte]
-        msg.extend(Screen.__parity(msg, content))
-        msg.extend(content)
-        msg = bytearray(msg)
-        return (spi_device, command, msg)
+    # @staticmethod
+    # def __build_msg(spi_device, command, content):
+    #     """Build a message body from command and content, calculates lengths, parity, etc"""
+    #     assert 0 <= command and command <= 255
+    #     len_hibyte = len(content) // 256
+    #     len_lobyte = len(content) % 256
+    #     msg = [spi_device.id, command, len(content), len_hibyte, len_lobyte]
+    #     msg.extend(Screen.__parity(msg, content))
+    #     msg.extend(content)
+    #     msg = bytearray(msg)
+    #     return (spi_device, command, msg)
 
     @staticmethod
     def __parity(header, content):
         """Computes parity of bytes, """
         return (np.array(header).sum() + np.array(content).sum()) % BYTE_SIZE
+
+
+    def send_array(self, barray):
+        self.bus.queue(self.__build_msg(self.spi_device, TXT_CMD, barray))
 
 
 class SPIDummy:

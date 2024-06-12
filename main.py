@@ -36,8 +36,9 @@ def main():
     while True:
         try:
             file_loader.update_processors(_verbose=True)
-            screens[0].draw_text(COLOR_BABY_BLUE, [("Hello World", 1)])
-            time.sleep(5)
+            # screens[0].draw_text(COLOR_BABY_BLUE, [("Hello World", 1)])
+            screens[0].send_array(bytearray(list(range(0, 255))))
+            time.sleep(3)
             
         except KeyboardInterrupt:
             print("[DEBUG][Main] Program Shutdown")
