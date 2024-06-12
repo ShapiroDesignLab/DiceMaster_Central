@@ -34,7 +34,7 @@ def main():
 
     br = bytearray(50)
     for i in range(51, 240):
-        br.extend(i)
+        br.extend(bytes(i))
 
     print(br)
 
