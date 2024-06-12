@@ -32,14 +32,18 @@ def main():
     bus, screens = init_screens()                    # Initialize Screens
     # imu = init_IMU()                            # Initialize IMU
 
+    br = bytearray(50)
+    for i in range(51, 240):
+        br.extend(i)
+
+    print(br)
+
     # The App Loop
     while True:
         try:
             file_loader.update_processors(_verbose=True)
             # screens[0].draw_text(COLOR_BABY_BLUE, [("Hello World", 1)])
-            l = list(range(50, 255))
-            print(l)
-            screens[0].send_array(bytearray(l))
+            screens[0].send_array(br)
             time.sleep(3)
             
         except KeyboardInterrupt:
