@@ -176,8 +176,9 @@ class Bus:
             msg = self.send_jobs.get()
             
             # If different device, shutdown and open another spi dev
-            self.last_spi_dev.down()
-            sleep(0.001)
+            if self.last_spi_dev is not None:
+                self.last_spi_dev.down()
+                sleep(0.001)
             msg[0].up()
             self.last_spi_dev = msg[0]
 
