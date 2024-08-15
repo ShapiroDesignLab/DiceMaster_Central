@@ -7,8 +7,7 @@ dependencies:
   - numpy=1.26.4
   - smbus2=0.4.3
   - pillow=10.3.0
-  - sqlite=3.45.3
   - pip
   - pip:
     - opencv-python 
-    # - spidev
+    - spidev

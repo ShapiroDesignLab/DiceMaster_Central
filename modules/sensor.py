@@ -8,7 +8,6 @@ This module hosts all drivers for sensors and interfaces with strategies.
 import threading
 import time
 from math import sqrt
-
 import smbus2 as smbus
 
 

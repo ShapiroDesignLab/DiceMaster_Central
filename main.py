@@ -1,49 +1,43 @@
 """
 U-M Shapiro Design Lab
-Daniel Hou @2024
+Huaidian Daniel Hou @2024
 
 This is the main driver of the DiceMaster_Central module
 """
 
 import time
-from file_loader import FileLoader
-from comm import Screen, Bus
-from sensor import MPU6050, MPU6050Dummy
+from modules.file_loader import FileLoader
+from modules.comm import Screen, Bus
+from modules.sensor import MPU6050, MPU6050Dummy
+from modules.const import *
 from config import *
-from utils import *
 
 
-def init_screens():
-    # Initialize screens
-    screens = []
-    bus_obj = Bus()
-    for i, cfg in enumerate(SCREEN_CFG):
-        screens.append(Screen(i+1, cfg["bus"], cfg["dev"], bus_obj))
-    bus_obj.run()
-    return bus_obj, screens
+# Initialize IMU
+IMU = MPU6050() if not NOBUS else MPU6050Dummy()
 
-def init_IMU():
-    if NOBUS:
-        return MPU6050Dummy()
-    return MPU6050()       # NOT TESTED
+# Initialize screens
+screens = []
+bus = Bus()
+for i, cfg in enumerate(SCREEN_CFG):
+    screens.append(Screen(i+1, cfg["bus"], cfg["dev"], bus))
+bus.run()
+
+# Initialize File Loader
+file_loader = FileLoader(SD_ROOT_PATH)      # Load content
 
 def main():
-    file_loader = FileLoader(SD_ROOT_PATH)      # Load content
-    bus, screens = init_screens()                    # Initialize Screens
-    # imu = init_IMU()                            # Initialize IMU
 
-    l = list(range(128, 160))
-    print(l)
-    br = bytearray(l)
-
-    print(br)
+    # l = list(range(128, 144))
+    # br = bytearray(l)
 
     # The App Loop
     while True:
         try:
             file_loader.update_processors(_verbose=True)
-            # screens[0].draw_text(COLOR_BABY_BLUE, [("Hello World", 1)])
-            screens[0].send_array(br)
+
+            screens[0].draw_text(COLOR_BABY_BLUE, [("Hello World", 1)])
+            # screens[0].send_array(br)
             time.sleep(3)
             
         except KeyboardInterrupt:

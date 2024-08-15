@@ -12,17 +12,15 @@ from time import sleep
 from queue import *
 import threading
 import numpy as np
-
-from config import *
+from .const import NOBUS
 
 if not NOBUS:
     import spidev
 
 from config import NOBUS, SCREEN_CFG, NUM_SCREEN
-from utils import *
+from modules.const import *
 
 from PIL import ImageFont, ImageDraw, Image
-
 
 
 def HIBYTE(val):
@@ -290,25 +288,10 @@ class Screen:
         """Draw Menu on screen"""
         pass
 
-
-    # Generic Message Functions
-    # @staticmethod
-    # def __build_msg(spi_device, command, content):
-    #     """Build a message body from command and content, calculates lengths, parity, etc"""
-    #     assert 0 <= command and command <= 255
-    #     len_hibyte = len(content) // 256
-    #     len_lobyte = len(content) % 256
-    #     msg = [spi_device.id, command, len(content), len_hibyte, len_lobyte]
-    #     msg.extend(Screen.__parity(msg, content))
-    #     msg.extend(content)
-    #     msg = bytearray(msg)
-    #     return (spi_device, command, msg)
-
     @staticmethod
     def __parity(header, content):
         """Computes parity of bytes, """
         return (np.array(header).sum() + np.array(content).sum()) % BYTE_SIZE
-
 
     def send_array(self, barray):
         self.bus.queue((self.spi_device, TXT_CMD, barray))

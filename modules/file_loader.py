@@ -18,7 +18,7 @@ from media_processor import VideoProcessor, ImageProcessor
 import config
 
 # Macros
-from utils import *
+from modules.const import *
 
 class FileLoader:
     """
@@ -198,8 +198,6 @@ class VideoWrapper(FileWrapper):
         self.processed_frame_cnt = 0
         self.next_frame_id = 0
         self.processed_path = []
-        if config.DYNAMIC_LOADING is False:
-            self._load()
 
     def _load(self):
         """processes the video"""
