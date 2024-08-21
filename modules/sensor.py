@@ -10,7 +10,21 @@ import time
 from math import sqrt
 import smbus2 as smbus
 
+class KalmanFilter:
+    def __init__(self, KalmanState, KalmanUncertainity):
+        self.KalmanState = KalmanState
+        self.KalmanUncertainity = KalmanUncertainity
+        print('inside  kalman')
 
+    def update(self, Gyro, Acc, dt):
+        self.KalmanState = self.KalmanState + dt*Gyro
+        self.KalmanUncertainity = self.KalmanUncertainity + dt*dt*4*4
+        KalmanGain = self.KalmanUncertainity * \
+            (1/1*self.KalmanUncertainity + 3*3)
+        self.KalmanState = self.KalmanState + KalmanGain*(Acc-self.KalmanState)
+        self.KalmanUncertainity = (1-KalmanGain)*self.KalmanUncertainity
+        return self.KalmanState
+    
 class MPU6050:
     """MPU 6050 Wrapper for Dice"""
     def __init__(self, bus=1, address=0x68):

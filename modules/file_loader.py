@@ -11,11 +11,13 @@ This module handles on-disk file IO, particularly, it
 This module also provides interface with strategies. 
 """
 
+from abc import ABC, abstractmethod
 import uuid
 import os
+import re
 
 from media_processor import VideoProcessor, ImageProcessor
-import config
+from .const import DYNAMIC_LOADING, CACHE_PATH
 
 # Macros
 from modules.const import *
@@ -26,90 +28,86 @@ class FileLoader:
     """
     def __init__(self, root, clear_cache=True):
         self.uuid_dict = {}
-        self.root_path = self.find_valid_sd_path(root)
+        self.root_path = self.__find_first_sd_path(root)
         ImageWrapper.processor.run()
         VideoWrapper.processor.run()
         
-        self.finder = self.build_file_dict(self.root_path)
+        self.activities = self.__build_act_dict(self.root_path)
         if clear_cache:
-            os.system(f"rm -r {config.CACHE_PATH}/*")
+            os.system(f"rm -r {CACHE_PATH}/*")
         
-    def find_valid_sd_path(self, root):
+    def __find_first_sd_path(self, root):
         """Return the first directory found in root"""
         for directory in os.listdir(root):
             if os.path.isdir(os.path.join(root, directory)):
                 print(f"Found SD Root {os.path.join(root, directory)}")
                 return os.path.join(root, directory)
 
-    def build_file_dict(self, root_path, depth=0):
+    def __build_act_dict(self, root_path, depth=0):
         """
         Build dictionary of activities: 
-            - class, session, activity, then files (no more directory detection)
+            - activity, then files
         """
-        if depth == 3:  # If at the end
-            finder = []
-            for f in os.listdir(root_path):
-                f = os.path.join(root_path, f)
-                if os.path.isfile(f) and self._get_file_type(f) is not TYPE_UNKNOWN:
-                    wrapper = self.factory(f)
-                    finder.append((f, wrapper))
-                    self.uuid_dict[wrapper.uuid] = wrapper
-            return finder
-
-        # Otherwise Recurse down
-        finder = {}  # name from macOS finder :)
+        acts = {}  # name from macOS finder :)
         for directory in os.listdir(root_path):
             dpath = os.path.join(root_path, directory)
             # Get all directories that are not hidden to be classes
             if os.path.isdir(dpath) and not directory.startswith('.'):
-                finder[directory] = self.build_file_dict(dpath, depth+1)
-        return finder
+                finder = []
+                for f in os.listdir(root_path):
+                    if f.startswith('.'): 
+                        continue
+                    f = os.path.join(dpath, f)
+                    if os.path.isfile(f) and self.__get_file_type(f) is not TYPE_UNKNOWN:
+                        wrapper = self.__factory(f)
+                        finder.append((f, wrapper))
+                        self.uuid_dict[wrapper.uuid] = wrapper
+                acts[directory] = finder
+        return acts
 
     @staticmethod
-    def _get_file_type(path):
-        """Get type of file, out of IMG, """
+    def __get_file_type(path):
+        """Get type of file, out of image, text, video, or unknown"""
         # Ignore hidden files
         if os.path.basename(path.lower()).startswith('.'):
             return TYPE_UNKNOWN
         
+        # Ignore README files
+        if re.match(README_REGEX_PATTERN, path):
+            return TYPE_UNKNOWN
+        
         # Find the last thing of the file name split by the dot operator
         ext = os.path.basename(path.lower()).split('.')[-1]
-        if ext in TXT_EXTS:
-            return TYPE_TXT
-        if ext in IMG_EXTS:
-            return TYPE_IMG
-        if ext in VID_EXTS:
-            return TYPE_VID
+        if ext in TXT_EXTS: return TYPE_TXT
+        if ext in IMG_EXTS: return TYPE_IMG
+        if ext in VID_EXTS: return TYPE_VID
         return TYPE_UNKNOWN
 
-    def factory(self, file_path):
-        ftype = FileLoader._get_file_type(file_path)
+    def __factory(self, file_path):
+        """Create a wrapper for a file given a path"""
+        ftype = FileLoader.__get_file_type(file_path)
         if ftype == TYPE_TXT:
             return TextWrapper(file_path)
         if ftype == TYPE_IMG:
             return ImageWrapper(file_path)
-        if ftype == TYPE_VID:
-            return VideoWrapper(file_path)
+        # Otherwise, it must be video
+        return VideoWrapper(file_path)
 
-    def iterate(self):
+    def __iterate(self):
         """Generator for iterating over the file dictionary"""
-        for (course, dc) in self.finder.items():
-            for (session, ds) in dc.items():
-                for (activity, la) in ds.items():
-                    for f in la:
-                        yield course, session, activity, f
+        for (activity, la) in self.activities.items():
+            for f in la:
+                yield activity, f
 
-    def visualize(self):
+    def __visualize(self):
         """Debug only: print valid files detected"""
         print("Found the following valid files: ")
-        for _,_,_, f in self.iterate():
+        for _, f in self.__iterate():
             print(f[0])
             
-    def update_processors(self, _verbose=False):
+    def update_processors(self):
         """
-        TO BE CALLED IN MAIN THREAD
-        
-        Fetches results from the other process
+        Fetches results from the processors
         """
         processed_images = ImageWrapper.processor.fetch_results()
         for (uid, path) in processed_images:
@@ -120,16 +118,15 @@ class FileLoader:
             self.uuid_dict[uid].processed_frame_cnt = frame_id
             print(f"Processed Frame for {os.path.basename(self.uuid_dict[uid].raw_path)}")
 
-
-class FileWrapper:
+class FileWrapper(ABC):
     """ The base class for a file """
-    processor = ImageProcessor()
     def __init__(self, path):
         self.raw_path = path
         self.raw_size = self.fsize(self.raw_path)
 
         # Loaded parameters
         self.loaded = False
+        self.content = None
         self.uuid = uuid.uuid4()
         self.processed_path = None
         self.processed_size = None
@@ -137,6 +134,21 @@ class FileWrapper:
     def fsize(self, path):
         """Get file size"""
         return os.path.getsize(path)
+    
+    @abstractmethod
+    def load(self):
+        pass
+
+    def release(self):
+        del self.content
+        self.content = None
+        self.loaded = False
+
+    @abstractmethod
+    def to_bytes(self):
+        pass
+
+
 
 
 class TextWrapper(FileWrapper):
@@ -144,50 +156,53 @@ class TextWrapper(FileWrapper):
 
     def __init__(self, path):
         super(TextWrapper, self).__init__(path)
-        if config.DYNAMIC_LOADING is False: 
-            self._load()
+        if DYNAMIC_LOADING is False: 
+            self.load()
 
-    def _load(self):
+    def load(self):
         """Load text content"""
+        if self.loaded:
+            return
+        with open(self.raw_path, 'r', encoding='utf-8') as file:
+            self.content = file.read().rstrip('\n')
         self.loaded = True
 
     def get(self):
         """Get content to send, in this case, raw string"""
-        with open(self.raw_path, 'r', encoding='utf-8') as file:
-            return file.read().rstrip('\n')
+        self.load()
+        return self.content
 
-    def get_esp_encode(self):
+    def to_bytes(self):
         """return encoded bytes for ESP"""
         return self.get()
 
 
 class ImageWrapper(FileWrapper):
     """Image Wrapper"""
-
+    processor = ImageProcessor()
     def __init__(self, path):
         super(ImageWrapper, self).__init__(path)
-        if config.DYNAMIC_LOADING is False: 
-            self._load()
+        self.content = None
 
-    def _load(self):
+    def load(self):
+        if self.loaded == True:
+            return
         """Loads the image from the file and queues it for processing."""
-        ImageWrapper.processor.enqueue(self.uuid, self.raw_path, IMG_WIDTH_FULL, IMG_HEIGHT_FULL)
-
-    def get(self, rotation=0):
-        """return content from this wrapper"""
-        if self.loaded is False:
-            return ERR_NOT_LOADED
+        self.processed_path = ImageWrapper.processor.enqueue_realtime(self.uuid, self.raw_path, IMG_WIDTH_FULL, IMG_HEIGHT_FULL)
         with open(self.processed_path, 'rb') as file:
-            binary_data = file.read()
-        return binary_data
+            self.content = file.read()
+        
+    def get(self):
+        """return content from this wrapper"""
+        self.load()
+        if self.loaded is False or self.processed_path is None:
+            return None
+        
+        return self.content
 
-    def get_readable(self, rotation=0):
+    def to_bytes(self):
         """return encoded bytes for ESP"""
-        content = self.get()
-        if content is not ERR_NOT_LOADED:
-            return content
-        raise KeyError("File Not Processed Yet!")
-
+        return self.get()
 
 class VideoWrapper(FileWrapper):
     """Video Wrapper"""
@@ -199,17 +214,17 @@ class VideoWrapper(FileWrapper):
         self.next_frame_id = 0
         self.processed_path = []
 
-    def _load(self):
+    def load(self):
         """processes the video"""
         VideoWrapper.processor.enqueue(self.uuid, self.raw_path, IMG_WIDTH_HALF, IMG_HEIGHT_HALF)
 
-    def get(self, rotation=0):
+    def get(self):
         """return binary content from this wrapper for esp encoding"""
         if self.processed_frame_cnt <= self.next_frame_id:
             return ERR_NOT_LOADED
 
         # Get image path for next frame
-        img_path = os.path.join(self.processed_path, f"{self.next_frame_id}_{rotation}.jpg")
+        img_path = os.path.join(self.processed_path[self.next_frame_id], f"{self.next_frame_id}.jpg")
         self.next_frame_id += 1
         if self.next_frame_id >= self.total_frame_cnt:
             self.next_frame_id = 0
@@ -218,6 +233,8 @@ class VideoWrapper(FileWrapper):
             binary_data = f.read()
         return binary_data
 
+    def to_bytes(self):
+        return self.get
 
 if __name__ == "__main__":
     print("Error, calling module file directly!")

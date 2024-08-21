@@ -13,15 +13,17 @@ from modules.const import *
 from config import *
 
 
-# Initialize IMU
-IMU = MPU6050() if not NOBUS else MPU6050Dummy()
+# Initialize Sensors
+imu = MPU6050() if not NOBUS else MPU6050Dummy()
+sensors = [imu]
 
 # Initialize screens
-screens = []
 bus = Bus()
+bus.run()
+screens = []
 for i, cfg in enumerate(SCREEN_CFG):
     screens.append(Screen(i+1, cfg["bus"], cfg["dev"], bus))
-bus.run()
+
 
 # Initialize File Loader
 file_loader = FileLoader(SD_ROOT_PATH)      # Load content
@@ -34,15 +36,28 @@ def main():
     # The App Loop
     while True:
         try:
-            file_loader.update_processors(_verbose=True)
+            # Update File Processor
+            file_loader.update_processors()
 
+            # Update Sensors
+            _ = [sensor.update() for sensor in sensors]
+
+
+            # Apply Strategy
+
+            # Screens
             screens[0].draw_text(COLOR_BABY_BLUE, [("Hello World", 1)])
             # screens[0].send_array(br)
+
+
             time.sleep(3)
             
         except KeyboardInterrupt:
             print("[DEBUG][Main] Program Shutdown")
             exit()
+
+        except:
+
 
 if __name__ == "__main__":
     main()

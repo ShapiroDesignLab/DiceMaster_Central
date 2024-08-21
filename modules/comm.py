@@ -14,10 +14,10 @@ import threading
 import numpy as np
 from .const import NOBUS
 
-if not NOBUS:
+if NOBUS == False:
     import spidev
 
-from config import NOBUS, SCREEN_CFG, NUM_SCREEN
+from const import NUM_SCREEN, NUM_SPI_CTRL, NUM_DEV_PER_SPI_CTRL
 from modules.const import *
 
 from PIL import ImageFont, ImageDraw, Image
@@ -86,7 +86,6 @@ class SPIDevice:
 
 class Bus:
     """Bus class"""
-
     def __init__(self):
         self.send_jobs = Queue()
         self.last_spi_dev = None
@@ -160,10 +159,6 @@ class Bus:
             if not self.running and self.send_jobs.empty():
                 sleep(HYB_SLEEP_TIME)
                 continue
-
-            # Periodically ping bus0
-            # if time.monotonic() > self.next_ping_time:
-            #     self.__broadcast_ping()
 
             # Check if any jobs
             if self.send_jobs.empty():
@@ -309,11 +304,33 @@ class SPIDummy:
         print(f"[DEBUG][Screen {self.id}] Sending Content with {len(content)} bytes to device {content[0]}")
         print(f"       [Screen {self.id}] Message type {commands[content[1]]} with computed length {content[2]*256 + content[3]}")
         self.last_sign = content[4]
+    
+    def open(self, bus, dev):
+        """close connection dummy function"""
+        print(f"[DEBUG][Screen {self.id}] commanded to start")
 
     def close(self):
         """close connection dummy function"""
         print(f"[DEBUG][Screen {self.id}] commanded to shutdown")
 
+
+def build_screen_config():
+    screen_cfg = []
+    for bus in range(2):
+        for dev in range(2):
+            if bus * 2 + dev == NUM_SCREEN:
+                return screen_cfg
+            screen_cfg.append({"bus": bus,"dev": dev})
+    return screen_cfg
+            
+def init_screen_comm():
+    bus = Bus()
+    bus.run()
+    screen_cfg = build_screen_config()
+    screens = []
+    for i, cfg in enumerate(screen_cfg):
+        screens.append(Screen(i+1, cfg["bus"], cfg["dev"], bus))
+    return bus, screens
 
 if __name__ == "__main__":
     print("Error, calling module comm directly!")

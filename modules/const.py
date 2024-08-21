@@ -1,13 +1,43 @@
 """
 Utility class for constants and macros
 """
-import shutil 
-NOBUS = shutil.which("raspi-config")
+import shutil
+import os
+
+NUM_SCREEN = 1
+NOBUS = True
+if shutil.which("raspi-config"):
+  NOBUS = False
+
+# Determine number of SPI controllers
+NUM_SPI_CTRL = 6 if 'Raspberry Pi 4' in open('/proc/device-tree/model').read() \
+                  else (2 if 'Raspberry Pi 3' in open('/proc/device-tree/model').read() \
+                  else 0)
+NUM_DEV_PER_SPI_CTRL = 2
+
+# Configure SD card path
+SD_ROOT_PATH = f"/media/{os.path.basename(os.path.expanduser("~"))}/"
+if NOBUS:
+    SD_ROOT_PATH = os.path.join(os.path.expanduser("~"), ".dicedata")
+if not os.path.isdir(SD_ROOT_PATH): os.makedirs(SD_ROOT_PATH)
+
+# Configure cache path
+CACHE_PATH = os.path.join(os.path.expanduser("~"), ".dicemaster/cache")
+if not os.path.isdir(CACHE_PATH):
+    os.makedirs(CACHE_PATH)
+
+# Configure DB Path
+# Path should have been created from previous step
+DB_PATH = os.path.join(os.path.expanduser("~"), ".dicemaster/fdb.sqlite")
+
 
 # Screen Config
 SCREEN_WIDTH = 480
 SCREEN_BOOT_DELAY = 3
 SCREEN_PING_INTERNVAL = 10
+
+# FS Config
+DYNAMIC_LOADING = True
 
 # Media Types
 TYPE_TXT = 1
@@ -17,8 +47,9 @@ TYPE_UNKNOWN = 0
 
 TXT_EXTS = ['txt', 'md', 'rtf']
 IMG_EXTS = ['jpg', 'png', 'jpeg', 'bmp', 'heic', 'heif']
-VID_EXTS = ['mpeg', 'mp4', 'mov', 'avi']
+VID_EXTS = ['mpeg']
 
+README_REGEX_PATTERN = r'^(?i:readme).*'
 
 # Image Metadata
 IMG_WIDTH_FULL = 480

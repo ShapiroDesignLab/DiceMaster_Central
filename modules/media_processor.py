@@ -2,22 +2,27 @@
 
 import os
 import multiprocessing
+from collections import deque
 from time import sleep
+from abc import ABC, abstractmethod
 
 # Image imports
 import cv2
 from PIL import Image
 
 # Configuration
-import config
+from .const import CACHE_PATH
 
 
-SLEEP_TIME = 0.0001      # 100 ns sleep time
+SLEEP_TIME = 0.001      # 1ms sleep time
 
-class BaseProcessor:
+
+class BaseProcessor(ABC):
     """Processor base class"""
     def __init__(self):
-        self.task_queue = multiprocessing.Queue()
+        # self.task_queue = multiprocessing.Queue()
+        self.task_queue = deque()
+        self.task_queue_mutex = 
         self.result_queue = multiprocessing.Queue()
         self.process = None
         self.started = False
@@ -26,7 +31,11 @@ class BaseProcessor:
         if self.process is not None:
             self.process.terminate()
 
-    def enqueue(self, uuid, raw_path, target_width, target_height):
+    def async_enqueue(self, uuid, raw_path, target_width, target_height):
+        """Enqueue an image for processing."""
+        self.task_queue.put((uuid, raw_path, target_width, target_height))
+
+    def sync_enqueue(self, uuid, raw_path, target_width, target_height):
         """Enqueue an image for processing."""
         self.task_queue.put((uuid, raw_path, target_width, target_height))
 
@@ -57,9 +66,10 @@ class BaseProcessor:
             processed_images.append(self.result_queue.get())
         return processed_images
 
+    @abstractmethod
     def process_worker(self, task_queue, result_queue):
         """Function to process images, to be run in a separate process."""
-        print("Error, calling base class!")
+        pass
         
 
 class ImageProcessor(BaseProcessor):
@@ -122,7 +132,7 @@ class ImageProcessor(BaseProcessor):
         for angle in rotations:
             rotated_img = img.rotate(angle)
             filename = f"{uuid}_{angle}.png"
-            save_path = os.path.join(config.CACHE_PATH, filename)
+            save_path = os.path.join(CACHE_PATH, filename)
             rotated_img.save(save_path, "PNG")
             if angle == 0:  # Store path of the 0 degree rotated image
                 return save_path
@@ -146,7 +156,7 @@ class VideoProcessor(BaseProcessor):
                 continue
 
             frame_cnt = 0
-            save_dir = os.path.join(config.CACHE_PATH, str(uuid))
+            save_dir = os.path.join(CACHE_PATH, str(uuid))
             os.makedirs(save_dir, exist_ok=True)
 
             while True:
@@ -155,29 +165,10 @@ class VideoProcessor(BaseProcessor):
                     break
                 frame = self.resize_and_crop(
                     frame, target_width, target_height)
-                self.save_rotated_frames(frame, frame_cnt, save_dir)
+                # self.save_rotated_frames(frame, frame_cnt, save_dir)
                 self.result_queue.put((uuid, save_dir, frame_cnt))
                 frame_cnt += 1
             cap.release()
-
-    @staticmethod
-    def save_rotated_frames(frame, frame_cnt, save_dir):
-        """Save frames rotated at specified angles."""
-        rotations = [0, 90, 180, 270]
-        for angle in rotations:
-            rotated_frame = VideoProcessor.rotate_frame(frame, angle)
-            filename = f"{frame_cnt}_{angle}.jpg"
-            save_path = os.path.join(save_dir, filename)
-            cv2.imwrite(save_path, rotated_frame)
-
-    @staticmethod
-    def rotate_frame(frame, angle):
-        """Rotate the frame by the given angle."""
-        (h, w) = frame.shape[:2]
-        center = (w // 2, h // 2)
-        M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        rotated_frame = cv2.warpAffine(frame, M, (w, h))
-        return rotated_frame
 
     @staticmethod
     def resize_and_crop(frame, target_width, target_height):
