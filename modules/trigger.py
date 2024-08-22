@@ -67,3 +67,43 @@ class RandomTimeTrigger(BaseTrigger):
       self.next_time = perf_counter() + self.get_rand_time()
       return True
     return False
+
+class ShakeTrigger(BaseTrigger):
+  """
+  Triggered when Dice is Shaken
+  """
+  def __init__(self, imu):
+    super(ShakeTrigger, self).__init__()
+
+  def enable(self):
+    """
+    Overload enable to support re-establishment of time intervals
+    """
+    super().enable()
+
+  def update(self):
+    """
+    Triggers if time_interval is reached
+    """
+    raise NotImplementedError()
+  
+
+class ShuffleTrigger(BaseTrigger):
+  """
+  Triggered when Dice is Shuffled (randomly turned around with threshold magnitude)
+  """
+  def __init__(self, imu):
+    super(ShuffleTrigger, self).__init__()
+
+  def enable(self):
+    """
+    Overload enable to support re-establishment of time intervals
+    """
+    super().enable()
+
+  def update(self):
+    """
+    Triggers if time_interval is reached
+    """
+    raise NotImplementedError()
+  

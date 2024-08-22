@@ -17,10 +17,9 @@ import os
 import re
 
 from media_processor import VideoProcessor, ImageProcessor
-from .const import DYNAMIC_LOADING, CACHE_PATH
-
-# Macros
-from modules.const import *
+from .config import DYNAMIC_LOADING, CACHE_PATH, TYPE_IMG, TYPE_TXT, TYPE_VID, TYPE_UNKNOWN, \
+    README_REGEX_PATTERN, TXT_EXTS, IMG_EXTS, VID_EXTS, IMG_WIDTH_FULL, IMG_HEIGHT_FULL, \
+    IMG_WIDTH_HALF, IMG_HEIGHT_HALF, ERR_NOT_LOADED
 
 class FileLoader:
     """
@@ -105,7 +104,7 @@ class FileLoader:
         for _, f in self.__iterate():
             print(f[0])
             
-    def update_processors(self):
+    def update(self):
         """
         Fetches results from the processors
         """
@@ -188,7 +187,7 @@ class ImageWrapper(FileWrapper):
         if self.loaded == True:
             return
         """Loads the image from the file and queues it for processing."""
-        self.processed_path = ImageWrapper.processor.enqueue_realtime(self.uuid, self.raw_path, IMG_WIDTH_FULL, IMG_HEIGHT_FULL)
+        self.processed_path = ImageWrapper.processor.enqueue(self.uuid, self.raw_path, IMG_WIDTH_FULL, IMG_HEIGHT_FULL)
         with open(self.processed_path, 'rb') as file:
             self.content = file.read()
         

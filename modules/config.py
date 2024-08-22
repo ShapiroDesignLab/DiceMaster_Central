@@ -4,16 +4,32 @@ Utility class for constants and macros
 import shutil
 import os
 
-NUM_SCREEN = 1
-NOBUS = True
+##########################
+# 
+# BUS Macros
+# 
+##########################
+NOBUS = False
 if shutil.which("raspi-config"):
-  NOBUS = False
+  NOBUS = True
 
 # Determine number of SPI controllers
 NUM_SPI_CTRL = 6 if 'Raspberry Pi 4' in open('/proc/device-tree/model').read() \
                   else (2 if 'Raspberry Pi 3' in open('/proc/device-tree/model').read() \
                   else 0)
 NUM_DEV_PER_SPI_CTRL = 2
+
+IMU_POLLING_RATE = 200
+IMU_HIST_SIZE = IMU_POLLING_RATE
+
+##########################
+# 
+# File System Configs
+# 
+##########################
+
+# FS Config
+DYNAMIC_LOADING = True
 
 # Configure SD card path
 SD_ROOT_PATH = f"/media/{os.path.basename(os.path.expanduser("~"))}/"
@@ -31,13 +47,18 @@ if not os.path.isdir(CACHE_PATH):
 DB_PATH = os.path.join(os.path.expanduser("~"), ".dicemaster/fdb.sqlite")
 
 
-# Screen Config
+##########################
+# 
+# Screen Configs
+# 
+##########################
+NUM_SCREEN = 1
+
+USING_ORIENTED_SCREENS = False
+
 SCREEN_WIDTH = 480
 SCREEN_BOOT_DELAY = 3
 SCREEN_PING_INTERNVAL = 10
-
-# FS Config
-DYNAMIC_LOADING = True
 
 # Media Types
 TYPE_TXT = 1

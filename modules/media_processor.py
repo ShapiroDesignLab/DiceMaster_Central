@@ -11,7 +11,7 @@ import cv2
 from PIL import Image
 
 # Configuration
-from .const import CACHE_PATH
+from .config import CACHE_PATH
 
 
 SLEEP_TIME = 0.001      # 1ms sleep time
@@ -20,9 +20,8 @@ SLEEP_TIME = 0.001      # 1ms sleep time
 class BaseProcessor(ABC):
     """Processor base class"""
     def __init__(self):
-        # self.task_queue = multiprocessing.Queue()
-        self.task_queue = deque()
-        self.task_queue_mutex = 
+        self.task_queue = multiprocessing.Queue()
+        # self.task_queue = deque()
         self.result_queue = multiprocessing.Queue()
         self.process = None
         self.started = False

@@ -11,23 +11,13 @@ import time
 from time import sleep
 from queue import *
 import threading
-import numpy as np
-from .const import NOBUS
+from .config import NOBUS
+from .config import PING_CMD, TXT_CMD, IMG_CMD, OPT_CMD, OPT_END, RES_CMD, HYB_CMD, \
+        SCREEN_BOOT_DELAY, SCREEN_PING_INTERNVAL, HYB_SLEEP_TIME, WORK_SLEEP_TIME
 
-if NOBUS == False:
+
+if not NOBUS:
     import spidev
-
-from const import NUM_SCREEN, NUM_SPI_CTRL, NUM_DEV_PER_SPI_CTRL
-from modules.const import *
-
-from PIL import ImageFont, ImageDraw, Image
-
-
-def HIBYTE(val):
-    return (val >> 8) & 0xFF
-
-def LOBYTE(val):
-    return val & 0xFF
 
 commands = {
     PING_CMD: "ping",
@@ -180,121 +170,10 @@ class Bus:
             print(f"Sent message with length {len(msg[2])}")
             time.sleep(0.009)
 
-class Screen:
-    """
-    This is the screen class handing communication and context to and from each screen
-    """
-
-    def __init__(self, uid, bus, dev, bus_obj):
-        self.id = uid
-        self.spi_device = SPIDevice(uid, bus, dev)
-
-        # Image Transfer Records
-        self.last_img_id = 0
-
-        # Register spi device to be pinged on bus
-        bus_obj.register(self.spi_device)
-        self.bus = bus_obj
-
-    # Image Functions
-    def draw_img(self, img_bytes, img_res=IMG_RES_480SQ, frame_time=0):
-        """given an image in bytes, transfer the image over"""
-        chunks = self.__make_img_chunks(
-            img_bytes, CHUNK_SIZE, self.last_img_id, img_res, frame_time)
-        # We Need Async Implementation (which it is now!)
-        for chunk in chunks:
-            pass
-            # self.bus.queue(self.__build_msg(self.spi_device, IMG_CMD, chunk))
-
-    @staticmethod
-    def __make_img_chunks(img_bytearray, chunk_size, img_id, img_res=IMG_RES_480SQ, frame_time=0):
-        """Make chunks of image from complete jpg file"""
-        max_len = len(img_bytearray)
-        chunk_id = 0
-        chunks = []
-        for start in range(0, max_len, chunk_size):
-            # Get the chunk
-            end = min(start+chunk_size, max_len)
-            img_chunk = img_bytearray[start:end]
-
-            # Build ID
-            bit7 = 64*img_res + chunk_id + 128*(end == max_len)
-            chunk = [img_id, bit7]
-
-            # Append 0, after parity check
-            chunk_len = end - start
-            if chunk_len < chunk_size:
-                zeros = [0] * (chunk_size + start - end)
-                img_chunk.append(zeros)
-            chunk.extend(img_chunk)
-
-            # Add to all chunks
-            chunks.append(chunk)
-            chunk_id += 1
-        return chunks
-
-    # Text Functions
-    def draw_text(self, color, text_list):
-        """Draw Text on screen"""
-        text_bytes = []
-        # Convert to binary
-        for (text, _) in text_list:
-            tb = bytearray(text, encoding='utf-8')
-            tb.append(0)
-            if len(text_bytes) < MAX_TEXT_LEN:
-                text_bytes.append(tb)
-            else:
-                print(f"WARNING: single line of text longer than maximum of {MAX_TEXT_LEN} bytes!")
-                
-        msg = [TXT_CMD, color[0], color[1], color[2]]
-        # Compute cursor positions
-        cursor_pos = Screen.__compute_text_cursor_position(text_list)
-        for i, (text, font) in enumerate(text_list):
-            msg.extend([HIBYTE(cursor_pos[i][0]), LOBYTE(cursor_pos[i][0]),
-                        HIBYTE(cursor_pos[i][1]), LOBYTE(cursor_pos[i][1]), 
-                        font, len(text_bytes[i])])
-            msg.extend(text_bytes[i])
-        self.bus.queue((self.spi_device, TXT_CMD, msg))
-        
-    @staticmethod
-    def __compute_text_cursor_position(text_list):
-        """Computes list of tuples x,y as cursor locations for text"""
-        cursor_pos = []
-        
-        # Load your specific fixed-width font and size
-        font = ImageFont.truetype('unifont-12.1.02.ttf', FONT_SIZE)
-        bbox = [font.getbbox(text[0]) for text in text_list]
-        widths = [w[2] - w[0] for w in bbox]
-        heights = [h[3] - h[1] for h in bbox]
-        
-        # Get size of the text
-        width = max(widths)
-        x_cursor = max(0, (SCREEN_WIDTH - width) // 2)
-
-        height = max(heights)
-        gap = height + TEXT_PADDING * (len(text_list) > 1)
-        y_start = (SCREEN_WIDTH-gap*len(text_list)+TEXT_PADDING) // 2
-        for i, text in enumerate(text_list):
-            cursor_pos.append((x_cursor, y_start + gap*i))
-        return cursor_pos
-
-    # Option Menu Related Functions
-    def draw_option(self, menu_items):
-        """Draw Menu on screen"""
-        pass
-
-    @staticmethod
-    def __parity(header, content):
-        """Computes parity of bytes, """
-        return (np.array(header).sum() + np.array(content).sum()) % BYTE_SIZE
-
-    def send_array(self, barray):
-        self.bus.queue((self.spi_device, TXT_CMD, barray))
-
-
 class SPIDummy:
-    """Dummy class for debugging without connecting to SPI devices"""
-
+    """
+    Dummy class for debugging without connecting to SPI devices
+    """
     def __init__(self, uid):
         self.id = uid
         self.last_sign = 0
@@ -312,25 +191,6 @@ class SPIDummy:
     def close(self):
         """close connection dummy function"""
         print(f"[DEBUG][Screen {self.id}] commanded to shutdown")
-
-
-def build_screen_config():
-    screen_cfg = []
-    for bus in range(2):
-        for dev in range(2):
-            if bus * 2 + dev == NUM_SCREEN:
-                return screen_cfg
-            screen_cfg.append({"bus": bus,"dev": dev})
-    return screen_cfg
-            
-def init_screen_comm():
-    bus = Bus()
-    bus.run()
-    screen_cfg = build_screen_config()
-    screens = []
-    for i, cfg in enumerate(screen_cfg):
-        screens.append(Screen(i+1, cfg["bus"], cfg["dev"], bus))
-    return bus, screens
 
 if __name__ == "__main__":
     print("Error, calling module comm directly!")

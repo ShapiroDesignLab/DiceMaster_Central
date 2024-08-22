@@ -7,41 +7,41 @@ This is the main driver of the DiceMaster_Central module
 
 import time
 from modules.file_loader import FileLoader
-from modules.comm import Screen, Bus
-from modules.sensor import MPU6050, MPU6050Dummy
-from modules.const import *
-from config import *
-
-
-# Initialize Sensors
-imu = MPU6050() if not NOBUS else MPU6050Dummy()
-sensors = [imu]
-
-# Initialize screens
-bus = Bus()
-bus.run()
-screens = []
-for i, cfg in enumerate(SCREEN_CFG):
-    screens.append(Screen(i+1, cfg["bus"], cfg["dev"], bus))
-
+from modules.screen import ScreenCollection
+from modules.sensor import SensorCollection
+from modules.config import SD_ROOT_PATH
 
 # Initialize File Loader
 file_loader = FileLoader(SD_ROOT_PATH)      # Load content
+# Initialize Sensors
+sensor_collection = SensorCollection()
+# Initialize Strategy
+strategy = 
+# Initialize screens
+screen_collection = ScreenCollection()
+
+
 
 def main():
-
     # l = list(range(128, 144))
     # br = bytearray(l)
+
+    while not sensor_collection.is_all_sensors_ready():
+        time.sleep(0.1)
 
     # The App Loop
     while True:
         try:
             # Update File Processor
-            file_loader.update_processors()
+            file_loader.update()
 
             # Update Sensors
-            _ = [sensor.update() for sensor in sensors]
+            for sensor in sensor_collection.values():
+                sensor.update()
 
+            # Update Triggers
+            for trigger in strategy.triggers():
+                trigger.update()
 
             # Apply Strategy
 
