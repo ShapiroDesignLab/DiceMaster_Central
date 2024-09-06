@@ -1,0 +1,5 @@
+python3-numpy
+python3-smbus2
+python3-pillow
+python3-spidev
+python3-opencv
