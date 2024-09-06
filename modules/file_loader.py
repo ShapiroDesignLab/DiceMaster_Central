@@ -16,7 +16,6 @@ import uuid
 import os
 import re
 
-from media_processor import VideoProcessor, ImageProcessor
 from .config import DYNAMIC_LOADING, CACHE_PATH, TYPE_IMG, TYPE_TXT, TYPE_VID, TYPE_UNKNOWN, \
     README_REGEX_PATTERN, TXT_EXTS, IMG_EXTS, VID_EXTS, IMG_WIDTH_FULL, IMG_HEIGHT_FULL, \
     IMG_WIDTH_HALF, IMG_HEIGHT_HALF, ERR_NOT_LOADED
@@ -28,8 +27,6 @@ class FileLoader:
     def __init__(self, root, clear_cache=True):
         self.uuid_dict = {}
         self.root_path = self.__find_first_sd_path(root)
-        ImageWrapper.processor.run()
-        VideoWrapper.processor.run()
         
         self.activities = self.__build_act_dict(self.root_path)
         if clear_cache:
@@ -104,18 +101,6 @@ class FileLoader:
         for _, f in self.__iterate():
             print(f[0])
             
-    def update(self):
-        """
-        Fetches results from the processors
-        """
-        processed_images = ImageWrapper.processor.fetch_results()
-        for (uid, path) in processed_images:
-            self.uuid_dict[uid].processed_path = path
-            print(f"Processed Image {os.path.basename(self.uuid_dict[uid].raw_path)}")
-        processed_videos = VideoWrapper.processor.fetch_results()
-        for (uid, path, frame_id) in processed_videos:
-            self.uuid_dict[uid].processed_frame_cnt = frame_id
-            print(f"Processed Frame for {os.path.basename(self.uuid_dict[uid].raw_path)}")
 
 class FileWrapper(ABC):
     """ The base class for a file """
@@ -178,7 +163,6 @@ class TextWrapper(FileWrapper):
 
 class ImageWrapper(FileWrapper):
     """Image Wrapper"""
-    processor = ImageProcessor()
     def __init__(self, path):
         super(ImageWrapper, self).__init__(path)
         self.content = None
@@ -205,7 +189,6 @@ class ImageWrapper(FileWrapper):
 
 class VideoWrapper(FileWrapper):
     """Video Wrapper"""
-    processor = VideoProcessor()
     def __init__(self, path):
         super(VideoWrapper, self).__init__(path)
         self.total_frame_cnt = 0

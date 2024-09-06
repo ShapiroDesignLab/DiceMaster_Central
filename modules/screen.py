@@ -68,27 +68,45 @@ class Screen:
         return chunks
 
     # Text Functions
-    def draw_text(self, color, text_list, orientation=0):
+    def draw_text(self, color, text_list, lang):
         """Draw Text on screen"""
-        text_bytes = []
-        # Convert to binary
-        for (text, _) in text_list:
-            tb = bytearray(text, encoding='utf-8')
-            tb.append(0)
-            if len(text_bytes) < MAX_TEXT_LEN:
-                text_bytes.append(tb)
+        # Build metadata
+        msg = [TXT_CMD, TXT_CMD, TXT_CMD, TXT_CMD]
+
+        # Add delay time
+        msg.append(0)
+
+        # Add color for block
+        color = [(color//65536)%255, (color//256)%255, color%255]
+        msg.extend([color[0], color[1], color[2]])
+
+        # Add cursor position
+        cursor_pos = Screen.__compute_text_cursor_position(text_list)
+        xy_pos = [[HIBYTE(p[0]), LOBYTE(p[0]), HIBYTE(p[1]), LOBYTE(p[1])] for p in cursor_pos]
+
+        # Set font
+        font = self.__map_font(lang)
+
+        # Build text line by line
+        for i, (text, _) in enumerate(text_list):
+            # Add cursor position
+            msg.extend(xy_pos[i])
+            msg.append(font)
+            tb = bytearray(text+'\0', encoding='utf-8')
+            if len(tb) < MAX_TEXT_LEN-len(msg)-1:
+                msg.append(len(tb))
+                msg.extend(list(tb))
             else:
                 print(f"WARNING: single line of text longer than maximum of {MAX_TEXT_LEN} bytes!")
-                
-        msg = [TXT_CMD, color[0], color[1], color[2]]
-        # Compute cursor positions
-        cursor_pos = Screen.__compute_text_cursor_position(text_list)
-        for i, (text, font) in enumerate(text_list):
-            msg.extend([HIBYTE(cursor_pos[i][0]), LOBYTE(cursor_pos[i][0]),
-                        HIBYTE(cursor_pos[i][1]), LOBYTE(cursor_pos[i][1]), 
-                        font, len(text_bytes[i])])
-            msg.extend(text_bytes[i])
         self.bus.queue((self.spi_device, TXT_CMD, msg))
+
+    @staticmethod
+    def __map_font(lang: str):
+        if lang.startswith('ar'): return 2  # Arabic
+        if lang.startswith('zh'): return 3  # Chinese
+        if lang.startswith('ru'): return 4  # Russian
+        if lang.startswith('hi'): return 5  # Hindi
+        return 1                            # Default to alphabetical (English, French, Spanish, etc)
         
     @staticmethod
     def __compute_text_cursor_position(text_list):
@@ -108,7 +126,7 @@ class Screen:
         height = max(heights)
         gap = height + TEXT_PADDING * (len(text_list) > 1)
         y_start = (SCREEN_WIDTH-gap*len(text_list)+TEXT_PADDING) // 2
-        for i, text in enumerate(text_list):
+        for i, (text, _) in enumerate(text_list):
             cursor_pos.append((x_cursor, y_start + gap*i))
         return cursor_pos
 
@@ -117,13 +135,16 @@ class Screen:
         """Draw Menu on screen"""
         pass
 
-    @staticmethod
-    def __parity(header, content):
-        """Computes parity of bytes, """
-        return (np.array(header).sum() + np.array(content).sum()) % BYTE_SIZE
+    # @staticmethod
+    # def __parity(header, content):
+    #     """Computes parity of bytes, """
+    #     return (np.array(header).sum() + np.array(content).sum()) % BYTE_SIZE
 
     def send_array(self, barray):
         self.bus.queue((self.spi_device, TXT_CMD, barray))
+
+    def draw(self):
+        pass
 
 class OrientedScreen(Screen):
     def __init__(self, uid, bus, dev, bus_obj, facing_orientation, top_orientation):
@@ -187,6 +208,9 @@ class ScreenCollection:
         if not self.compute_orientation: 
             return None
         pass
+
+    def __getitem__(self, id):
+        return self.screens[id]
 
     def __build_screen_config(self):
         screen_cfg = []
