@@ -15,8 +15,9 @@ from abc import ABC, abstractmethod
 import uuid
 import os
 import re
+import json
 
-from .config import DYNAMIC_LOADING, CACHE_PATH, TYPE_IMG, TYPE_TXT, TYPE_VID, TYPE_UNKNOWN, \
+from .config import DYNAMIC_LOADING, TYPE_IMG, TYPE_TXT, TYPE_VID, TYPE_UNKNOWN, \
     README_REGEX_PATTERN, TXT_EXTS, IMG_EXTS, VID_EXTS, IMG_WIDTH_FULL, IMG_HEIGHT_FULL, \
     IMG_WIDTH_HALF, IMG_HEIGHT_HALF, ERR_NOT_LOADED
 
@@ -95,13 +96,6 @@ class FileLoader:
             for f in la:
                 yield activity, f
 
-    def __visualize(self):
-        """Debug only: print valid files detected"""
-        print("Found the following valid files: ")
-        for _, f in self.__iterate():
-            print(f[0])
-            
-
 class FileWrapper(ABC):
     """ The base class for a file """
     def __init__(self, path):
@@ -112,8 +106,6 @@ class FileWrapper(ABC):
         self.loaded = False
         self.content = None
         self.uuid = uuid.uuid4()
-        self.processed_path = None
-        self.processed_size = None
 
     def fsize(self, path):
         """Get file size"""
@@ -123,6 +115,7 @@ class FileWrapper(ABC):
     def load(self):
         pass
 
+    @abstractmethod
     def release(self):
         del self.content
         self.content = None
@@ -140,25 +133,33 @@ class TextWrapper(FileWrapper):
 
     def __init__(self, path):
         super(TextWrapper, self).__init__(path)
-        if DYNAMIC_LOADING is False: 
-            self.load()
+        self.load()
 
     def load(self):
         """Load text content"""
         if self.loaded:
             return
-        with open(self.raw_path, 'r', encoding='utf-8') as file:
-            self.content = file.read().rstrip('\n')
-        self.loaded = True
+        try:
+            # Read JSON file
+            with open(self.raw_path, 'r') as json_file:
+                data = json.load(json_file)
+                bytes = [l["bytes"] for l in data["lines"]]
+                self.content = [self.to_bytes(b) for b in bytes]
+                self.loaded = True
+                return True
+        except FileNotFoundError:
+            print(f"File {self.raw_path} not found.")
+            return False
+        except json.JSONDecodeError:
+            print("Error decoding JSON.")
+            return False
 
-    def get(self):
-        """Get content to send, in this case, raw string"""
-        self.load()
-        return self.content
-
-    def to_bytes(self):
+    @staticmethod
+    def to_bytes(ascii_string):
         """return encoded bytes for ESP"""
-        return self.get()
+        """Convert an ASCII string back into a raw byte array."""
+        byte_values = ascii_string.split()
+        return bytearray(int(byte, 16) for byte in byte_values)
 
 
 class ImageWrapper(FileWrapper):
@@ -195,10 +196,6 @@ class VideoWrapper(FileWrapper):
         self.processed_frame_cnt = 0
         self.next_frame_id = 0
         self.processed_path = []
-
-    def load(self):
-        """processes the video"""
-        VideoWrapper.processor.enqueue(self.uuid, self.raw_path, IMG_WIDTH_HALF, IMG_HEIGHT_HALF)
 
     def get(self):
         """return binary content from this wrapper for esp encoding"""

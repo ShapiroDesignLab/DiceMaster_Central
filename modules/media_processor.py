@@ -237,9 +237,3 @@ class TextProcessor(BaseProcessor):
     def bytes_to_ascii(byte_array):
         """Convert a byte array into an ASCII string representation."""
         return ' '.join(f'{byte:02X}' for byte in byte_array)
-
-    @staticmethod
-    def ascii_to_bytes(ascii_string):
-        """Convert an ASCII string back into a raw byte array."""
-        byte_values = ascii_string.split()
-        return bytearray(int(byte, 16) for byte in byte_values)
