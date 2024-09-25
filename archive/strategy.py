@@ -8,7 +8,7 @@ import time
 from abc import ABC, abstractmethod
 import numpy as np
 
-from modules.trigger import RandomTimeTrigger
+from archive.trigger import RandomTimeTrigger
 
 class BaseStrategy(ABC):
     def __init__(self, file_loader, screen_collection):

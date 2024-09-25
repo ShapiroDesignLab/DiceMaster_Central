@@ -6,11 +6,11 @@ This is the main driver of the DiceMaster_Central module
 """
 
 import time
-from modules.file_loader import FileLoader
-from modules.screen import ScreenCollection
-from modules.sensor import SensorCollection
-from modules.config import SD_ROOT_PATH
-from modules.strategy import RandomTimeUpdateStrategy
+from archive.file_loader import FileLoader
+from archive.screen import ScreenCollection
+from archive.sensor import SensorCollection
+from archive.config import SD_ROOT_PATH
+from archive.strategy import RandomTimeUpdateStrategy
 
 
 def main():
@@ -29,22 +29,22 @@ def main():
     # The App Loop
     while True:
         try:
-            # # Update File Processor
-            # file_loader.update()
+            # Update File Processor
+            file_loader.update()
 
-            # # Update Sensors
-            # for sensor in sensor_collection.values():
-            #     sensor.update()
+            # Update Sensors
+            for sensor in sensor_collection.values():
+                sensor.update()
 
-            # # Update Triggers
-            # for trigger in strategy.triggers:
-            #     trigger.update()
+            # Update Triggers
+            for trigger in strategy.triggers:
+                trigger.update()
 
-            # # Apply Strategy
-            # strategy.update()
+            # Apply Strategy
+            strategy.update()
 
-            # DEBUG
-            screen_collection[0].draw_text(0x89CFF0, [("Hello World", 1)])
+            # # DEBUG
+            # screen_collection[0].draw_text(0x89CFF0, [("Hello World", 1)])
 
             time.sleep(10)
             

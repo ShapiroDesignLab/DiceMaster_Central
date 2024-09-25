@@ -9,7 +9,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon, QColor
 import cv2
 
-from modules.media_processor import *
+from archive.media_processor import *
 
 # Processor status codes
 STATUS_UNPROCESSED = 0
