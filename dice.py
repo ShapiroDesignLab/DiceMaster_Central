@@ -6,11 +6,11 @@ This is the main driver of the DiceMaster_Central module
 """
 
 import time
-from archive.file_loader import FileLoader
-from archive.screen import ScreenCollection
-from archive.sensor import SensorCollection
-from archive.config import SD_ROOT_PATH
-from archive.strategy import RandomTimeUpdateStrategy
+from module.file_loader import FileLoader
+from module.screen import ScreenCollection
+from module.sensor import SensorCollection
+from module.config import SD_ROOT_PATH
+from module.strategy import RandomTimeUpdateStrategy
 
 
 def main():
