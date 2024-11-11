@@ -53,3 +53,13 @@ class RingBufferNP:
         if self.front_ptr < self.back_ptr:
             return np.concatenate((self.buffer[self.back_ptr:, :], self.buffer[:self.front_ptr, :])).reshape(-1, self.shape[1])
         return self.buffer
+    
+
+class LimitedID:
+    def __init__(self, init_id=0, max_id=256):
+        self.next_id = init_id-1
+        self.max_id = max_id
+
+    def __call__(self):
+        self.next_id = (self.next_id+1)%self.max_id
+        return self.next_id
