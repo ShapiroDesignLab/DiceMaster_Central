@@ -1,6 +1,0 @@
-opencv-python==4.10.0.84
-numpy==1.26.4
-smbus2==0.4.3
-pillow==10.3.0
-langdetect==1.0.9
-spidev

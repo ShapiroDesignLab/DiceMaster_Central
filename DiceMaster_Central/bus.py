@@ -11,8 +11,8 @@ import time
 from time import sleep
 from queue import Queue
 import threading
-from .config import NOBUS
-from .config import PING_CMD, TXT_CMD, IMG_CMD, OPT_CMD, OPT_END, RES_CMD, HYB_CMD, \
+from .constants import NOBUS
+from .constants import PING_CMD, TXT_CMD, IMG_CMD, OPT_CMD, OPT_END, RES_CMD, HYB_CMD, \
         SCREEN_BOOT_DELAY, SCREEN_PING_INTERNVAL, HYB_SLEEP_TIME, WORK_SLEEP_TIME
 
 if not NOBUS:
