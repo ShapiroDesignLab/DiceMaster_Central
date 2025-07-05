@@ -1,0 +1,396 @@
+<?xml version="1.0"?>
+<robot name="dice_master">
+  
+  <!-- Base link (center of the dice) -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.1016 0.1016 0.1016"/> <!-- 4 inches = 0.1016 meters -->
+      </geometry>
+      <material name="dice_body">
+        <color rgba="0.2 0.2 0.2 0.8"/> <!-- Dark gray with transparency -->
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.1016 0.1016 0.1016"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <!-- Screen 1: Top face (+Z direction, facing +X when viewed from above) -->
+  <joint name="screen_1_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="screen_1_link"/>
+    <origin xyz="0 0 0.0508" rpy="0 0 0"/> <!-- Half cube height up -->
+  </joint>
+  
+  <link name="screen_1_link">
+    <visual>
+      <geometry>
+        <box size="0.095 0.095 0.002"/> <!-- 3.74 inches screen, 2mm thick -->
+      </geometry>
+      <material name="screen_1">
+        <color rgba="0.0 0.0 1.0 1.0"/> <!-- Blue for identification -->
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Screen 2: Right face (+Y direction) -->
+  <joint name="screen_2_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="screen_2_link"/>
+    <origin xyz="0 0.0508 0" rpy="1.5708 0 0"/> <!-- Rotated to face +Y -->
+  </joint>
+  
+  <link name="screen_2_link">
+    <visual>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+      <material name="screen_2">
+        <color rgba="0.0 1.0 0.0 1.0"/> <!-- Green for identification -->
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Screen 3: Back face (+X direction) -->
+  <joint name="screen_3_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="screen_3_link"/>
+    <origin xyz="0.0508 0 0" rpy="0 1.5708 0"/> <!-- Rotated to face +X -->
+  </joint>
+  
+  <link name="screen_3_link">
+    <visual>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+      <material name="screen_3">
+        <color rgba="1.0 0.0 0.0 1.0"/> <!-- Red for identification -->
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Screen 4: Left face (-Y direction) -->
+  <joint name="screen_4_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="screen_4_link"/>
+    <origin xyz="0 -0.0508 0" rpy="-1.5708 0 0"/> <!-- Rotated to face -Y -->
+  </joint>
+  
+  <link name="screen_4_link">
+    <visual>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+      <material name="screen_4">
+        <color rgba="1.0 1.0 0.0 1.0"/> <!-- Yellow for identification -->
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Screen 5: Front face (-X direction) -->
+  <joint name="screen_5_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="screen_5_link"/>
+    <origin xyz="-0.0508 0 0" rpy="0 -1.5708 0"/> <!-- Rotated to face -X -->
+  </joint>
+  
+  <link name="screen_5_link">
+    <visual>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+      <material name="screen_5">
+        <color rgba="1.0 0.0 1.0 1.0"/> <!-- Magenta for identification -->
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Screen 6: Bottom face (-Z direction, facing -X when viewed from below) -->
+  <joint name="screen_6_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="screen_6_link"/>
+    <origin xyz="0 0 -0.0508" rpy="3.14159 0 0"/> <!-- Half cube height down, flipped -->
+  </joint>
+  
+  <link name="screen_6_link">
+    <visual>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+      <material name="screen_6">
+        <color rgba="0.0 1.0 1.0 1.0"/> <!-- Cyan for identification -->
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.095 0.095 0.002"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Camera frames for each screen (for image projection visualization) -->
+  
+  <!-- Screen 1 camera frame -->
+  <joint name="screen_1_camera_joint" type="fixed">
+    <parent link="screen_1_link"/>
+    <child link="screen_1_camera_frame"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/> <!-- 1cm above screen surface -->
+  </joint>
+  
+  <link name="screen_1_camera_frame"/>
+
+  <!-- Screen 2 camera frame -->
+  <joint name="screen_2_camera_joint" type="fixed">
+    <parent link="screen_2_link"/>
+    <child link="screen_2_camera_frame"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="screen_2_camera_frame"/>
+
+  <!-- Screen 3 camera frame -->
+  <joint name="screen_3_camera_joint" type="fixed">
+    <parent link="screen_3_link"/>
+    <child link="screen_3_camera_frame"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="screen_3_camera_frame"/>
+
+  <!-- Screen 4 camera frame -->
+  <joint name="screen_4_camera_joint" type="fixed">
+    <parent link="screen_4_link"/>
+    <child link="screen_4_camera_frame"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="screen_4_camera_frame"/>
+
+  <!-- Screen 5 camera frame -->
+  <joint name="screen_5_camera_joint" type="fixed">
+    <parent link="screen_5_link"/>
+    <child link="screen_5_camera_frame"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="screen_5_camera_frame"/>
+
+  <!-- Screen 6 camera frame -->
+  <joint name="screen_6_camera_joint" type="fixed">
+    <parent link="screen_6_link"/>
+    <child link="screen_6_camera_frame"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/>
+  </joint>
+  
+  <link name="screen_6_camera_frame"/>
+
+  <!-- Edge detection frames for auto-rotation -->
+  <!-- Each screen has 4 edge frames: top, right, bottom, left -->
+  
+  <!-- Screen 1 edges (top face) -->
+  <joint name="screen_1_edge_top_joint" type="fixed">
+    <parent link="screen_1_link"/>
+    <child link="screen_1_edge_top"/>
+    <origin xyz="0.0475 0 0.001" rpy="0 0 0"/> <!-- +X edge -->
+  </joint>
+  <link name="screen_1_edge_top"/>
+  
+  <joint name="screen_1_edge_right_joint" type="fixed">
+    <parent link="screen_1_link"/>
+    <child link="screen_1_edge_right"/>
+    <origin xyz="0 0.0475 0.001" rpy="0 0 0"/> <!-- +Y edge -->
+  </joint>
+  <link name="screen_1_edge_right"/>
+  
+  <joint name="screen_1_edge_bottom_joint" type="fixed">
+    <parent link="screen_1_link"/>
+    <child link="screen_1_edge_bottom"/>
+    <origin xyz="-0.0475 0 0.001" rpy="0 0 0"/> <!-- -X edge -->
+  </joint>
+  <link name="screen_1_edge_bottom"/>
+  
+  <joint name="screen_1_edge_left_joint" type="fixed">
+    <parent link="screen_1_link"/>
+    <child link="screen_1_edge_left"/>
+    <origin xyz="0 -0.0475 0.001" rpy="0 0 0"/> <!-- -Y edge -->
+  </joint>
+  <link name="screen_1_edge_left"/>
+
+  <!-- Screen 2 edges (right face) -->
+  <joint name="screen_2_edge_top_joint" type="fixed">
+    <parent link="screen_2_link"/>
+    <child link="screen_2_edge_top"/>
+    <origin xyz="0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_2_edge_top"/>
+  
+  <joint name="screen_2_edge_right_joint" type="fixed">
+    <parent link="screen_2_link"/>
+    <child link="screen_2_edge_right"/>
+    <origin xyz="0 0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_2_edge_right"/>
+  
+  <joint name="screen_2_edge_bottom_joint" type="fixed">
+    <parent link="screen_2_link"/>
+    <child link="screen_2_edge_bottom"/>
+    <origin xyz="-0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_2_edge_bottom"/>
+  
+  <joint name="screen_2_edge_left_joint" type="fixed">
+    <parent link="screen_2_link"/>
+    <child link="screen_2_edge_left"/>
+    <origin xyz="0 -0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_2_edge_left"/>
+
+  <!-- Screen 3 edges (back face) -->
+  <joint name="screen_3_edge_top_joint" type="fixed">
+    <parent link="screen_3_link"/>
+    <child link="screen_3_edge_top"/>
+    <origin xyz="0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_3_edge_top"/>
+  
+  <joint name="screen_3_edge_right_joint" type="fixed">
+    <parent link="screen_3_link"/>
+    <child link="screen_3_edge_right"/>
+    <origin xyz="0 0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_3_edge_right"/>
+  
+  <joint name="screen_3_edge_bottom_joint" type="fixed">
+    <parent link="screen_3_link"/>
+    <child link="screen_3_edge_bottom"/>
+    <origin xyz="-0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_3_edge_bottom"/>
+  
+  <joint name="screen_3_edge_left_joint" type="fixed">
+    <parent link="screen_3_link"/>
+    <child link="screen_3_edge_left"/>
+    <origin xyz="0 -0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_3_edge_left"/>
+
+  <!-- Screen 4 edges (left face) -->
+  <joint name="screen_4_edge_top_joint" type="fixed">
+    <parent link="screen_4_link"/>
+    <child link="screen_4_edge_top"/>
+    <origin xyz="0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_4_edge_top"/>
+  
+  <joint name="screen_4_edge_right_joint" type="fixed">
+    <parent link="screen_4_link"/>
+    <child link="screen_4_edge_right"/>
+    <origin xyz="0 0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_4_edge_right"/>
+  
+  <joint name="screen_4_edge_bottom_joint" type="fixed">
+    <parent link="screen_4_link"/>
+    <child link="screen_4_edge_bottom"/>
+    <origin xyz="-0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_4_edge_bottom"/>
+  
+  <joint name="screen_4_edge_left_joint" type="fixed">
+    <parent link="screen_4_link"/>
+    <child link="screen_4_edge_left"/>
+    <origin xyz="0 -0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_4_edge_left"/>
+
+  <!-- Screen 5 edges (front face) -->
+  <joint name="screen_5_edge_top_joint" type="fixed">
+    <parent link="screen_5_link"/>
+    <child link="screen_5_edge_top"/>
+    <origin xyz="0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_5_edge_top"/>
+  
+  <joint name="screen_5_edge_right_joint" type="fixed">
+    <parent link="screen_5_link"/>
+    <child link="screen_5_edge_right"/>
+    <origin xyz="0 0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_5_edge_right"/>
+  
+  <joint name="screen_5_edge_bottom_joint" type="fixed">
+    <parent link="screen_5_link"/>
+    <child link="screen_5_edge_bottom"/>
+    <origin xyz="-0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_5_edge_bottom"/>
+  
+  <joint name="screen_5_edge_left_joint" type="fixed">
+    <parent link="screen_5_link"/>
+    <child link="screen_5_edge_left"/>
+    <origin xyz="0 -0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_5_edge_left"/>
+
+  <!-- Screen 6 edges (bottom face) -->
+  <joint name="screen_6_edge_top_joint" type="fixed">
+    <parent link="screen_6_link"/>
+    <child link="screen_6_edge_top"/>
+    <origin xyz="0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_6_edge_top"/>
+  
+  <joint name="screen_6_edge_right_joint" type="fixed">
+    <parent link="screen_6_link"/>
+    <child link="screen_6_edge_right"/>
+    <origin xyz="0 0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_6_edge_right"/>
+  
+  <joint name="screen_6_edge_bottom_joint" type="fixed">
+    <parent link="screen_6_link"/>
+    <child link="screen_6_edge_bottom"/>
+    <origin xyz="-0.0475 0 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_6_edge_bottom"/>
+  
+  <joint name="screen_6_edge_left_joint" type="fixed">
+    <parent link="screen_6_link"/>
+    <child link="screen_6_edge_left"/>
+    <origin xyz="0 -0.0475 0.001" rpy="0 0 0"/>
+  </joint>
+  <link name="screen_6_edge_left"/>
+
+</robot>
