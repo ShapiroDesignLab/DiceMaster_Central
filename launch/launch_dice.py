@@ -68,6 +68,16 @@ def generate_launch_description():
             default_value='0.2',
             description='Margin for auto-rotation triggering'
         ),
+        DeclareLaunchArgument(
+            'enable_remote_logger',
+            default_value='true',
+            description='Enable remote logger for web-based log viewing'
+        ),
+        DeclareLaunchArgument(
+            'remote_logger_port',
+            default_value='8443',
+            description='HTTPS port for remote logger web interface'
+        ),
     ])
     
     # Include MPU6050 driver launch file
@@ -134,5 +144,21 @@ def generate_launch_description():
                 output='screen'
             )
         )
+    
+    # Remote Logger Node (conditional)
+    from launch.conditions import IfCondition
+    launch_nodes.append(
+        Node(
+            package='dicemaster_central',
+            executable='remote_logger',
+            name='remote_logger_node',
+            arguments=[
+                '--port', LaunchConfiguration('remote_logger_port'),
+                '--max-logs', '1000'
+            ],
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('enable_remote_logger'))
+        )
+    )
     
     return LaunchDescription(launch_nodes)
