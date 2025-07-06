@@ -69,9 +69,6 @@ IMU_HIST_SIZE = IMU_POLLING_RATE
 # 
 ##########################
 
-# FS Config
-DYNAMIC_LOADING = True
-
 # Configure SD card path
 if NOBUS:
     SD_ROOT_PATH = os.path.join(os.path.expanduser("~"), ".dicedata")

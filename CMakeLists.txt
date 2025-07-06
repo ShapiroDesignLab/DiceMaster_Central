@@ -21,6 +21,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/IMUPose.msg"
   "msg/MotionDetection.msg"
   "msg/IMUCalibration.msg"
+  "msg/NotificationRequest.msg"
   DEPENDENCIES geometry_msgs sensor_msgs std_msgs
 )
 

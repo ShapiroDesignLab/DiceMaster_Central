@@ -5,12 +5,63 @@ Daniel Hou @2024
 ROS2 node for IMU pose estimation using advanced Kalman filtering.
 Implements quaternion-based Kalman filter with motion detection capabilities.
 Publishes to /imu/* namespace with custom message types for enhanced functionality.
+
+USAGE:
+======
+
+1. Data Topics (Published):
+   - /dice_hw/imu/pose (Pose): Pose estimation with quaternion orientation
+   - /dice_hw/imu/raw (RawIMU): Raw IMU sensor data
+   - /dice_hw/imu/motion (MotionDetection): Motion detection results (rotations, shaking, intensities)
+   - /dice_hw/imu/calibration (IMUCalibration): Calibration status and quality metrics
+   - /dice_hw/imu/accel, /dice_hw/imu/angvel (Vector3): Individual sensor data
+   - /dice_hw/imu/motion/* (Bool): Individual motion detection flags
+
+2. Services:
+   - /dice_hw/imu/calibrate (Empty): Start IMU calibration process
+     Usage: ros2 service call /dice_hw/imu/calibrate std_srvs/srv/Empty
+
+3. Data Source:
+   - Reads IMU data directly from I2C interface (no subscribed topics)
+
+4. Parameters:
+   - calibration_duration (float): Calibration time in seconds (default: 3.0)
+   - process_noise (float): Kalman filter process noise (default: 0.001)
+   - measurement_noise (float): Kalman filter measurement noise (default: 1.0)
+   - publishing_rate (float): Data publishing rate in Hz (default: 30.0)
+   - i2c_bus (int): I2C bus number for IMU (default: 1)
+   - i2c_address (int): I2C address for IMU (default: 0x68)
+
+5. Example Usage:
+   # Launch IMU node
+   ros2 run dicemaster_central imu_node
+   
+   # Start calibration (keep dice perfectly still!)
+   ros2 service call /dice_hw/imu/calibrate std_srvs/srv/Empty
+   
+   # Subscribe to pose data
+   ros2 topic echo /dice_hw/imu/pose
+   
+   # Monitor motion detection
+   ros2 topic echo /dice_hw/imu/motion
+
+CALIBRATION:
+============
+The calibration service will:
+1. Send countdown notifications to all screens
+2. Collect IMU data for the specified duration while device is stationary
+3. Calculate accelerometer and gyroscope biases
+4. Display completion status via notifications
+5. Begin normal operation with bias correction applied
+
+IMPORTANT: Keep the dice completely still during calibration!
 """
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Pose, Quaternion, Point, Vector3
 from sensor_msgs.msg import Imu
-from std_msgs.msg import String, Bool
+from std_msgs.msg import String, Bool, Header
+from std_srvs.srv import Empty
 import threading
 import time
 from math import sin, cos, sqrt, atan2, asin, pi
@@ -18,17 +69,25 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 from collections import deque
 
+# I2C communication
+try:
+    import smbus2
+    I2C_AVAILABLE = True
+except ImportError:
+    I2C_AVAILABLE = False
+    print("Warning: smbus2 not available. IMU I2C communication disabled.")
+
 from DiceMaster_Central.config.constants import IMU_POLLING_RATE, IMU_HIST_SIZE
 from DiceMaster_Central.utils import RingBufferNP
 
 # Import custom message types
 try:
-    from dicemaster_central.msg import RawIMU, IMUPose, MotionDetection, IMUCalibration
+    from dicemaster_central.msg import RawIMU, MotionDetection, IMUCalibration, NotificationRequest
 except ImportError:
     # Fallback for development - create dummy classes
     class RawIMU:
         def __init__(self):
-            self.header = None
+            self.header = Header()
             self.accel_x = 0.0
             self.accel_y = 0.0
             self.accel_z = 0.0
@@ -37,22 +96,9 @@ except ImportError:
             self.gyro_z = 0.0
             self.temperature = 0.0
     
-    class IMUPose:
-        def __init__(self):
-            self.header = None
-            self.orientation = None
-            self.roll = 0.0
-            self.pitch = 0.0
-            self.yaw = 0.0
-            self.linear_acceleration = None
-            self.angular_velocity = None
-            self.orientation_covariance = [0.0] * 9
-            self.acceleration_covariance = [0.0] * 9
-            self.angular_velocity_covariance = [0.0] * 9
-    
     class MotionDetection:
         def __init__(self):
-            self.header = None
+            self.header = Header()
             self.rotation_x_positive = False
             self.rotation_x_negative = False
             self.rotation_y_positive = False
@@ -66,15 +112,22 @@ except ImportError:
     
     class IMUCalibration:
         def __init__(self):
-            self.header = None
+            self.header = Header()
             self.status = ""
             self.progress = 0.0
             self.calibration_duration = 0.0
-            self.accelerometer_bias = None
-            self.gyroscope_bias = None
+            self.accelerometer_bias = Vector3()
+            self.gyroscope_bias = Vector3()
             self.accelerometer_std = 0.0
             self.gyroscope_std = 0.0
             self.sample_count = 0
+
+    class NotificationRequest:
+        def __init__(self):
+            self.screen_id = 0
+            self.level = ""
+            self.content = ""
+            self.duration = 0.0
 
 
 class QuaternionKalmanFilter:
@@ -354,6 +407,18 @@ class MotionDetector:
             'shake_intensity': self.get_shake_intensity(),
             'stillness_factor': self.get_stillness_factor()
         }
+        return {
+            'rotation_x_pos': self.detect_rotation_x_pos(),
+            'rotation_x_neg': self.detect_rotation_x_neg(),
+            'rotation_y_pos': self.detect_rotation_y_pos(),
+            'rotation_y_neg': self.detect_rotation_y_neg(),
+            'rotation_z_pos': self.detect_rotation_z_pos(),
+            'rotation_z_neg': self.detect_rotation_z_neg(),
+            'shaking': self.detect_shaking(),
+            'rotation_intensity': self.get_rotation_intensity(),
+            'shake_intensity': self.get_shake_intensity(),
+            'stillness_factor': self.get_stillness_factor()
+        }
 
 
 class DiceIMUNode(Node):
@@ -395,6 +460,16 @@ class DiceIMUNode(Node):
         self.rotation_z_pos_pub = self.create_publisher(Bool, '/imu/motion/rotation_z_pos', 10)
         self.rotation_z_neg_pub = self.create_publisher(Bool, '/imu/motion/rotation_z_neg', 10)
         self.shaking_pub = self.create_publisher(Bool, '/imu/motion/shaking', 10)
+
+        # Notification publisher for sending notifications to screens
+        self.notification_pub = self.create_publisher(NotificationRequest, '/dice_system/notifications', 10)
+
+        # Calibration service
+        self.calibration_service = self.create_service(
+            Empty,
+            '/dice_hw/imu/calibrate',
+            self.calibrate_service_callback
+        )
         
         # Subscriber to raw IMU data (custom message format)
         self.imu_sub = self.create_subscription(
@@ -423,6 +498,8 @@ class DiceIMUNode(Node):
         # Calibration data
         self.calib_samples = []
         self.calib_start_time = None
+        self.calibration_requested = False
+        self.calibration_timer = None
         
         # Threading
         self.lock = threading.Lock()
@@ -437,9 +514,8 @@ class DiceIMUNode(Node):
         self.current_quaternion = np.array([1.0, 0.0, 0.0, 0.0])
         self.current_temperature = 0.0
         
-        # Start calibration
-        self.publish_calibration_status("STARTING", 0.0)
-        self.get_logger().info("Dice IMU node initialized - waiting for IMU data")
+        # Don't start calibration automatically - wait for service call
+        self.get_logger().info("Dice IMU node initialized - call /dice_hw/imu/calibrate service to start calibration")
         
     def raw_imu_callback(self, msg):
         """Callback for custom RawIMU data"""
@@ -476,8 +552,12 @@ class DiceIMUNode(Node):
     def _process_imu_data(self, accel, gyro, current_time):
         """Common processing for both message types"""
         # Handle calibration
-        if not self.is_calibrated:
+        if self.calibration_requested and not self.is_calibrated:
             self._handle_calibration(accel, gyro, current_time)
+            return
+            
+        # Skip processing if not calibrated
+        if not self.is_calibrated:
             return
             
         # Apply bias correction
@@ -603,7 +683,8 @@ class DiceIMUNode(Node):
         if self.calib_start_time is None:
             self.calib_start_time = current_time
             self.publish_calibration_status("CALIBRATING", 0.0)
-            self.get_logger().info(f"Starting calibration for {self.calib_duration} seconds...")
+            self.get_logger().info(f"Starting calibration data collection for {self.calib_duration} seconds...")
+            self._send_notification_to_all_screens("info", "Calibration data collection started", 2.0)
             
         # Calculate progress
         elapsed = current_time - self.calib_start_time
@@ -613,6 +694,13 @@ class DiceIMUNode(Node):
         if elapsed < self.calib_duration:
             self.calib_samples.append((accel.copy(), gyro.copy()))
             self.publish_calibration_status("CALIBRATING", progress)
+            
+            # Send progress notifications every second
+            if len(self.calib_samples) % 30 == 0:  # Assuming ~30Hz data rate
+                remaining = int(self.calib_duration - elapsed)
+                if remaining > 0:
+                    self._send_notification_to_all_screens("info", 
+                        f"Calibrating... {remaining}s remaining", 1.5)
             return
             
         # Finish calibration
@@ -626,6 +714,7 @@ class DiceIMUNode(Node):
                 # Assume Z-axis should read -9.81 m/s² when upright
                 self.acc_bias[2] += 9.81
                 self.is_calibrated = True
+                self.calibration_requested = False
                 
             # Calculate calibration quality metrics
             acc_std = np.std(acc_samples, axis=0)
@@ -639,11 +728,19 @@ class DiceIMUNode(Node):
             
             self.publish_calibration_status("READY", 1.0, acc_std, gyro_std)
             
+            # Send completion notification
+            quality = "good" if np.mean(acc_std) < 0.5 and np.mean(gyro_std) < 0.1 else "moderate"
+            self._send_notification_to_all_screens("info", 
+                f"IMU Calibration Complete! Quality: {quality}", 4.0)
+            
             # Clear calibration data
             self.calib_samples.clear()
         else:
             self.get_logger().error("Calibration failed - no data collected")
             self.publish_calibration_status("CALIBRATION_FAILED", 0.0)
+            self._send_notification_to_all_screens("error", 
+                "IMU Calibration Failed - No data collected", 4.0)
+            self.calibration_requested = False
             
     def publish_calibration_status(self, status, progress, acc_std=None, gyro_std=None):
         """Publish calibration status using custom message"""
@@ -680,9 +777,81 @@ class DiceIMUNode(Node):
         """Legacy method for backward compatibility"""
         self.publish_calibration_status(status, 0.0)
         
+    def calibrate_service_callback(self, request, response):
+        """Service callback to start IMU calibration"""
+        if self.calibration_requested:
+            self.get_logger().warn("Calibration already in progress")
+            return response
+            
+        self.get_logger().info("Calibration service called - starting calibration process")
+        
+        # Reset calibration state
+        with self.lock:
+            self.is_calibrated = False
+            self.calibration_requested = True
+            self.calib_samples.clear()
+            self.calib_start_time = None
+            
+        # Send initial notification to all screens
+        self._send_notification_to_all_screens("info", 
+            f"IMU Calibration Starting - Keep dice perfectly still for {int(self.calib_duration)} seconds")
+        
+        # Start countdown notifications
+        self._start_calibration_countdown()
+        
+        return response
+    
+    def _send_notification_to_all_screens(self, level, content, duration=3.0):
+        """Send notification to all screens (screen IDs 0-7)"""
+        for screen_id in range(8):  # Assuming up to 8 screens
+            notification = NotificationRequest()
+            notification.screen_id = screen_id
+            notification.level = level
+            notification.content = content
+            notification.duration = duration
+            self.notification_pub.publish(notification)
+    
+    def _start_calibration_countdown(self):
+        """Start countdown timer for calibration notifications"""
+        # Cancel any existing timer
+        if self.calibration_timer is not None:
+            self.calibration_timer.cancel()
+            
+        # Send countdown notifications every second
+        countdown_duration = int(self.calib_duration)
+        self._calibration_countdown_step(countdown_duration)
+    
+    def _calibration_countdown_step(self, remaining_seconds):
+        """Step function for calibration countdown"""
+        if not self.calibration_requested:
+            return
+            
+        if remaining_seconds > 0:
+            # Send countdown notification
+            self._send_notification_to_all_screens("info", 
+                f"Calibration starts in {remaining_seconds} seconds - Keep dice still!", 2.0)
+            
+            # Schedule next countdown step
+            self.calibration_timer = self.create_timer(1.0, 
+                lambda: self._calibration_countdown_step(remaining_seconds - 1))
+            self.calibration_timer.cancel()  # Cancel immediately to make it one-shot
+            self.calibration_timer = threading.Timer(1.0, 
+                lambda: self._calibration_countdown_step(remaining_seconds - 1))
+            self.calibration_timer.start()
+        else:
+            # Start actual calibration
+            self._send_notification_to_all_screens("info", 
+                f"Calibration in progress... {int(self.calib_duration)}s remaining", 1.0)
+            self.get_logger().info("Starting calibration data collection")
+    
     def destroy_node(self):
         """Clean shutdown"""
         self.running = False
+        
+        # Cancel calibration timer if active
+        if self.calibration_timer is not None:
+            self.calibration_timer.cancel()
+            
         super().destroy_node()
 
 

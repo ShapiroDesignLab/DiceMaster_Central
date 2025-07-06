@@ -114,6 +114,34 @@ def calibration_callback(msg):
         print(f"Calibration quality (std): {msg.accelerometer_std:.3f}")
 ```
 
+### NotificationRequest.msg
+Notification request message for the DiceMaster notification system.
+
+**Fields:**
+- `screen_id`: Target screen ID (int32)
+- `level`: Notification level - "info" or "error" (string)
+- `content`: Notification text content (string)
+- `duration`: Display duration in seconds (float64)
+
+**Usage:**
+```python
+from dicemaster_central.msg import NotificationRequest
+
+# Publishing a notification
+notif_msg = NotificationRequest()
+notif_msg.screen_id = 0
+notif_msg.level = 'info'
+notif_msg.content = 'System startup complete'
+notif_msg.duration = 3.0
+publisher.publish(notif_msg)
+```
+
+**Topic:** `/dice_system/notifications`
+
+The notification system displays messages with appropriate colors:
+- INFO: Black text on white background
+- ERROR: Red text on white background
+
 ## Topic Structure
 
 The IMU system publishes to the following topics:

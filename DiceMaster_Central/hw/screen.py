@@ -43,6 +43,7 @@ from DiceMaster_Central.media.protocol import (
     ImageEndMessage, GIFStartMessage, GIFFrameMessage, GIFEndMessage,
     OptionMessage, split_image_into_chunks
 )
+from DiceMaster_Central.data_types.media_types import VirtualTextGroup
 
 
 # Service message types
@@ -64,6 +65,9 @@ class ScreenRequest:
     bg_color: Optional[int] = None
     font_color: Optional[int] = None
     text_positions: Optional[List[Tuple[int, int, int, str]]] = None
+    
+    # Virtual text group for notifications and programmatic text
+    virtual_text_group: Optional['VirtualTextGroup'] = None
     
     # File-based content fields
     file_path: Optional[str] = None
@@ -613,25 +617,50 @@ class ScreenNode(Node):
     def _process_text_request(self, request: ScreenRequest) -> ScreenResponse:
         """Process text display request"""
         try:
-            # Store content for potential re-rotation
-            self.last_content = {
-                'bg_color': request.bg_color or 0x000000,
-                'font_color': request.font_color or 0xFFFFFF,
-                'text': request.text_content
-            }
-            self.last_content_type = 'text'
-            
-            # Create text message
-            text_msg = TextMessage(msg_id=self._next_msg_id)
-            
-            # Format text for display (simple centering for now)
-            texts = [(SCREEN_WIDTH//2, SCREEN_WIDTH//2, FONT_SIZE, request.text_content)]
-            text_msg.add_text_group(
-                request.bg_color or 0x000000,
-                request.font_color or 0xFFFFFF,
-                texts,
-                self.current_rotation
-            )
+            # Check if this is a VirtualTextGroup (for notifications) or regular text
+            if request.virtual_text_group:
+                # Handle VirtualTextGroup (notifications)
+                vtg = request.virtual_text_group
+                
+                # Store content for potential re-rotation
+                self.last_content = {
+                    'bg_color': vtg.bg_color,
+                    'font_color': vtg.font_color,
+                    'texts': vtg.texts,
+                    'virtual': True
+                }
+                self.last_content_type = 'virtual_text'
+                
+                # Create text message using VirtualTextGroup data
+                text_msg = TextMessage(msg_id=self._next_msg_id)
+                text_msg.add_text_group(
+                    vtg.bg_color,
+                    vtg.font_color,
+                    vtg.texts,
+                    self.current_rotation
+                )
+                
+            else:
+                # Handle regular text content
+                # Store content for potential re-rotation
+                self.last_content = {
+                    'bg_color': request.bg_color or 0x000000,
+                    'font_color': request.font_color or 0xFFFFFF,
+                    'text': request.text_content
+                }
+                self.last_content_type = 'text'
+                
+                # Create text message
+                text_msg = TextMessage(msg_id=self._next_msg_id)
+                
+                # Format text for display (simple centering for now)
+                texts = [(SCREEN_WIDTH//2, SCREEN_WIDTH//2, FONT_SIZE, request.text_content)]
+                text_msg.add_text_group(
+                    request.bg_color or 0x000000,
+                    request.font_color or 0xFFFFFF,
+                    texts,
+                    self.current_rotation
+                )
             
             # Send via manager
             msg_bytes = text_msg.build_message()
