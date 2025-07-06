@@ -3,4 +3,7 @@ python3-smbus2
 python3-pillow
 python3-spidev
 python3-opencv
-
+python3-openssl
+python3-asyncio
+python3-scipy
+python3-colcon-common-extensions

@@ -6,35 +6,25 @@ This is the main driver of the DiceMaster_Central module
 """
 
 import time
-from module.file_loader import FileLoader
-from module.screen import ScreenCollection
-from module.sensor import SensorCollection
-from module.config import SD_ROOT_PATH
-from module.strategy import RandomTimeUpdateStrategy
+from DiceMaster_Central.media.file_loader import FileLoader
+from DiceMaster_Central.hw.screen import ScreenCollection
+from DiceMaster_Central.config.constants import SD_ROOT_PATH
+from DiceMaster_Central.strategies.strategy_manager import RandomTimeUpdateStrategy
 
 
 def main():
     # Initialize File Loader
     file_loader = FileLoader(SD_ROOT_PATH)
-    # Initialize Sensors
-    sensor_collection = SensorCollection()
     # Initialize screens
     screen_collection = ScreenCollection()
     # Initialize Strategy
     strategy = RandomTimeUpdateStrategy(file_loader, screen_collection)
-
-    while not sensor_collection.is_all_sensors_ready():
-        time.sleep(0.1)
 
     # The App Loop
     while True:
         try:
             # Update File Processor
             file_loader.update()
-
-            # Update Sensors
-            for sensor in sensor_collection.values():
-                sensor.update()
 
             # Update Triggers
             for trigger in strategy.triggers:

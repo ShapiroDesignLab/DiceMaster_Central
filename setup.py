@@ -13,7 +13,8 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', glob('launch/*.py')),
-        ('share/' + package_name + '/resources', glob('resources/*')),
+        ('share/' + package_name + '/resource', glob('resource/*')),
+        ('share/' + package_name + '/msg', glob('msg/*.msg')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -26,6 +27,9 @@ setup(
         'console_scripts': [
             'screen_node = scripts.screen_node:main',
             'imu_node = DiceMaster_Central.imu:main',
+            'remote_logger = DiceMaster_Central.remote_logger:main',
+            'test_imu = scripts.test_imu:main',
+            'imu_example = scripts.imu_example:main',
         ],
     },
 )

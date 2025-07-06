@@ -63,3 +63,9 @@ class LimitedID:
     def __call__(self):
         self.next_id = (self.next_id+1)%self.max_id
         return self.next_id
+
+def HIBYTE(val):
+    return (val >> 8) & 0xFF
+
+def LOBYTE(val):
+    return val & 0xFF

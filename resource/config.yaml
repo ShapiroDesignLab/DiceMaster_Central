@@ -57,7 +57,7 @@ screen_config:
     description: "Bottom face screen"
 
 # Global screen settings
-screen_settings:
+screen_config_global:
   auto_rotate: true
   rotation_margin: 0.2
   max_chunk_size: 2040
@@ -70,10 +70,6 @@ spi_config:
   mode: 0  # SPI mode 0
   bits_per_word: 8
   
-# # Display Settings
-# display_config:
-#   default_resolution: 480  # 480x480 pixels
-#   default_format: "JPEG"
-#   default_font_size: 10
-#   screen_width: 480
-#   screen_height: 480
+imu_config:
+  calibration_duration: 3.0
+  publishing_rate: 120  # Hz
