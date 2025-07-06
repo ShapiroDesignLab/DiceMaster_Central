@@ -6,53 +6,64 @@ ROS2 node for IMU pose estimation using advanced Kalman filtering.
 Implements quaternion-based Kalman filter with motion detection capabilities.
 Publishes to /imu/* namespace with custom message types for enhanced functionality.
 
-USAGE:
-======
+USAGE IN ROS2:
+==============
 
-1. Data Topics (Published):
-   - /dice_hw/imu/pose (Pose): Pose estimation with quaternion orientation
+1. Launch the IMU Node:
+   ros2 run dicemaster_central imu_node
+   
+   # Or with custom parameters
+   ros2 run dicemaster_central imu_node --ros-args \
+     -p calibration_duration:=5.0 \
+     -p process_noise:=0.01 \
+     -p measurement_noise:=0.5 \
+     -p publishing_rate:=50.0
+
+2. Data Topics (Published):
+   - /dice_hw/imu/pose (Pose): Pose estimation with quaternion orientation and position
    - /dice_hw/imu/raw (RawIMU): Raw IMU sensor data
    - /dice_hw/imu/motion (MotionDetection): Motion detection results (rotations, shaking, intensities)
    - /dice_hw/imu/calibration (IMUCalibration): Calibration status and quality metrics
    - /dice_hw/imu/accel, /dice_hw/imu/angvel (Vector3): Individual sensor data
    - /dice_hw/imu/motion/* (Bool): Individual motion detection flags
 
-2. Services:
+3. Services:
    - /dice_hw/imu/calibrate (Empty): Start IMU calibration process
      Usage: ros2 service call /dice_hw/imu/calibrate std_srvs/srv/Empty
 
-3. Data Source:
-   - Reads IMU data directly from I2C interface (no subscribed topics)
-
-4. Parameters:
-   - calibration_duration (float): Calibration time in seconds (default: 3.0)
-   - process_noise (float): Kalman filter process noise (default: 0.001)
-   - measurement_noise (float): Kalman filter measurement noise (default: 1.0)
-   - publishing_rate (float): Data publishing rate in Hz (default: 30.0)
-   - i2c_bus (int): I2C bus number for IMU (default: 1)
-   - i2c_address (int): I2C address for IMU (default: 0x68)
-
-5. Example Usage:
-   # Launch IMU node
-   ros2 run dicemaster_central imu_node
+4. Integration Example:
+   import rclpy
+   from geometry_msgs.msg import Pose
+   from dicemaster_central.msg import MotionDetection
    
-   # Start calibration (keep dice perfectly still!)
-   ros2 service call /dice_hw/imu/calibrate std_srvs/srv/Empty
-   
-   # Subscribe to pose data
-   ros2 topic echo /dice_hw/imu/pose
-   
-   # Monitor motion detection
-   ros2 topic echo /dice_hw/imu/motion
+   class MyNode(Node):
+       def __init__(self):
+           super().__init__('my_node')
+           self.pose_sub = self.create_subscription(
+               Pose, '/dice_hw/imu/pose', self.pose_callback, 10)
+           self.motion_sub = self.create_subscription(
+               MotionDetection, '/dice_hw/imu/motion', self.motion_callback, 10)
+               
+       def pose_callback(self, msg):
+           # Use pose data: msg.orientation.{w,x,y,z}
+           # Position is always (0,0,0) for IMU-only pose
+           pass
+           
+       def motion_callback(self, msg):
+           if msg.shaking:
+               self.get_logger().info("Dice is being shaken!")
+           if msg.rotation_x_pos:
+               self.get_logger().info("Dice rolled +X!")
 
-CALIBRATION:
-============
-The calibration service will:
-1. Send countdown notifications to all screens
-2. Collect IMU data for the specified duration while device is stationary
-3. Calculate accelerometer and gyroscope biases
-4. Display completion status via notifications
-5. Begin normal operation with bias correction applied
+5. Hardware Requirements:
+   - MPU6050 or compatible IMU on I2C bus
+   - Default I2C address: 0x68
+   - Default I2C bus: 1
+
+6. Calibration Process:
+   - Keep dice perfectly still during calibration countdown
+   - Calibration removes bias from accelerometer and gyroscope
+   - Status published on /dice_hw/imu/calibration topic
 
 IMPORTANT: Keep the dice completely still during calibration!
 """
@@ -66,8 +77,6 @@ import threading
 import time
 from math import sin, cos, sqrt, atan2, asin, pi
 import numpy as np
-from scipy.spatial.transform import Rotation
-from collections import deque
 
 # I2C communication
 try:
@@ -78,350 +87,13 @@ except ImportError:
     print("Warning: smbus2 not available. IMU I2C communication disabled.")
 
 from DiceMaster_Central.config.constants import IMU_POLLING_RATE, IMU_HIST_SIZE
-from DiceMaster_Central.utils import RingBufferNP
+from DiceMaster_Central.utils import QuaternionKalmanFilter
+from DiceMaster_Central.hw.motion_detector import MotionDetector
 
-# Import custom message types
-try:
-    from dicemaster_central.msg import RawIMU, MotionDetection, IMUCalibration, NotificationRequest
-except ImportError:
-    # Fallback for development - create dummy classes
-    class RawIMU:
-        def __init__(self):
-            self.header = Header()
-            self.accel_x = 0.0
-            self.accel_y = 0.0
-            self.accel_z = 0.0
-            self.gyro_x = 0.0
-            self.gyro_y = 0.0
-            self.gyro_z = 0.0
-            self.temperature = 0.0
-    
-    class MotionDetection:
-        def __init__(self):
-            self.header = Header()
-            self.rotation_x_positive = False
-            self.rotation_x_negative = False
-            self.rotation_y_positive = False
-            self.rotation_y_negative = False
-            self.rotation_z_positive = False
-            self.rotation_z_negative = False
-            self.shaking = False
-            self.rotation_intensity = 0.0
-            self.shake_intensity = 0.0
-            self.stillness_factor = 1.0
-    
-    class IMUCalibration:
-        def __init__(self):
-            self.header = Header()
-            self.status = ""
-            self.progress = 0.0
-            self.calibration_duration = 0.0
-            self.accelerometer_bias = Vector3()
-            self.gyroscope_bias = Vector3()
-            self.accelerometer_std = 0.0
-            self.gyroscope_std = 0.0
-            self.sample_count = 0
-
-    class NotificationRequest:
-        def __init__(self):
-            self.screen_id = 0
-            self.level = ""
-            self.content = ""
-            self.duration = 0.0
+from dicemaster_central.msg import RawIMU, MotionDetection, IMUCalibration, NotificationRequest
 
 
-class QuaternionKalmanFilter:
-    """Advanced Kalman filter for quaternion-based pose estimation"""
-    
-    def __init__(self, process_noise=0.001, measurement_noise=1.0):
-        # State: [q0, q1, q2, q3] (quaternion w, x, y, z)
-        self.state = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
-        self.P = np.eye(4, dtype=np.float64) * 0.1  # Covariance matrix
-        self.Q = np.eye(4, dtype=np.float64) * process_noise  # Process noise
-        self.R = np.eye(4, dtype=np.float64) * measurement_noise  # Measurement noise
-        self.I = np.eye(4, dtype=np.float64)  # Identity matrix
-        
-        # Angular velocity for state prediction
-        self.omega = np.zeros(3, dtype=np.float64)
-        
-    def predict(self, dt, gyro):
-        """Predict step using gyroscope data"""
-        if dt <= 0:
-            return
-            
-        # Update angular velocity
-        self.omega = gyro
-        
-        # State transition matrix A based on angular velocity
-        A = self._get_state_transition_matrix(dt)
-        
-        # Predict state
-        self.state = A @ self.state
-        
-        # Normalize quaternion
-        q_norm = np.linalg.norm(self.state)
-        if q_norm > 0:
-            self.state = self.state / q_norm
-        
-        # Predict covariance
-        self.P = A @ self.P @ A.T + self.Q
-        
-    def update(self, accel_measurement):
-        """Update step using accelerometer data"""
-        # Convert accelerometer to quaternion measurement
-        z = self._accel_to_quaternion(accel_measurement)
-        
-        # Measurement matrix H (identity since we're directly measuring quaternion)
-        H = self.I
-        
-        # Innovation
-        y = z - H @ self.state
-        
-        # Innovation covariance
-        S = H @ self.P @ H.T + self.R
-        
-        # Kalman gain
-        try:
-            K = self.P @ H.T @ np.linalg.inv(S)
-        except np.linalg.LinAlgError:
-            K = self.P @ H.T @ np.linalg.pinv(S)
-        
-        # Update state
-        self.state = self.state + K @ y
-        
-        # Normalize quaternion
-        q_norm = np.linalg.norm(self.state)
-        if q_norm > 0:
-            self.state = self.state / q_norm
-        
-        # Update covariance
-        self.P = (self.I - K @ H) @ self.P
-        
-    def _get_state_transition_matrix(self, dt):
-        """Get state transition matrix for quaternion integration"""
-        wx, wy, wz = self.omega
-        
-        # Quaternion integration matrix
-        omega_matrix = np.array([
-            [0.0, -wx, -wy, -wz],
-            [wx,  0.0,  wz, -wy],
-            [wy, -wz,  0.0,  wx],
-            [wz,  wy, -wx,  0.0]
-        ], dtype=np.float64)
-        
-        return self.I + 0.5 * dt * omega_matrix
-        
-    def _accel_to_quaternion(self, accel):
-        """Convert accelerometer measurement to quaternion"""
-        # Normalize accelerometer
-        acc_norm = np.linalg.norm(accel)
-        if acc_norm == 0:
-            return np.array([1.0, 0.0, 0.0, 0.0])
-        
-        accel_normalized = accel / acc_norm
-        
-        # Calculate roll and pitch from accelerometer
-        roll = atan2(accel_normalized[1], accel_normalized[2])
-        pitch = atan2(-accel_normalized[0], 
-                     sqrt(accel_normalized[1]**2 + accel_normalized[2]**2))
-        yaw = 0.0  # Cannot determine yaw from accelerometer alone
-        
-        # Convert to quaternion
-        return self._euler_to_quaternion(roll, pitch, yaw)
-        
-    def _euler_to_quaternion(self, roll, pitch, yaw):
-        """Convert Euler angles to quaternion"""
-        cr = cos(roll / 2.0)
-        sr = sin(roll / 2.0)
-        cp = cos(pitch / 2.0)
-        sp = sin(pitch / 2.0)
-        cy = cos(yaw / 2.0)
-        sy = sin(yaw / 2.0)
-        
-        w = cr * cp * cy + sr * sp * sy
-        x = sr * cp * cy - cr * sp * sy
-        y = cr * sp * cy + sr * cp * sy
-        z = cr * cp * sy - sr * sp * cy
-        
-        return np.array([w, x, y, z], dtype=np.float64)
-        
-    def get_quaternion(self):
-        """Get current quaternion estimate"""
-        return self.state.copy()
-        
-    def get_euler_angles(self):
-        """Convert quaternion to Euler angles"""
-        w, x, y, z = self.state
-        
-        # Roll (x-axis rotation)
-        sinr_cosp = 2 * (w * x + y * z)
-        cosr_cosp = 1 - 2 * (x * x + y * y)
-        roll = atan2(sinr_cosp, cosr_cosp)
-        
-        # Pitch (y-axis rotation)
-        sinp = 2 * (w * y - z * x)
-        if abs(sinp) >= 1:
-            pitch = pi / 2 if sinp > 0 else -pi / 2
-        else:
-            pitch = asin(sinp)
-        
-        # Yaw (z-axis rotation)
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-        yaw = atan2(siny_cosp, cosy_cosp)
-        
-        return roll, pitch, yaw
-
-
-class MotionDetector:
-    """Detects various motion patterns from IMU data"""
-    
-    def __init__(self, history_size=50):
-        self.history_size = history_size
-        self.accel_history = deque(maxlen=history_size)
-        self.gyro_history = deque(maxlen=history_size)
-        self.quat_history = deque(maxlen=history_size)
-        
-        # Detection thresholds
-        self.rotation_threshold = 1.5  # rad/s
-        self.shake_threshold = 15.0    # m/s²
-        self.shake_frequency_min = 2.0  # Hz
-        self.shake_frequency_max = 8.0  # Hz
-        self.stillness_threshold = 0.5  # Combined motion threshold for stillness
-        
-    def update(self, accel, gyro, quaternion):
-        """Update motion detector with new data"""
-        self.accel_history.append(accel.copy())
-        self.gyro_history.append(gyro.copy())
-        self.quat_history.append(quaternion.copy())
-        
-    def detect_rotation_x_pos(self):
-        """Detect +90 degree rotation around world X-axis (roll)"""
-        return self._detect_axis_rotation(0, 1)
-        
-    def detect_rotation_x_neg(self):
-        """Detect -90 degree rotation around world X-axis (roll)"""
-        return self._detect_axis_rotation(0, -1)
-        
-    def detect_rotation_y_pos(self):
-        """Detect +90 degree rotation around world Y-axis (pitch)"""
-        return self._detect_axis_rotation(1, 1)
-        
-    def detect_rotation_y_neg(self):
-        """Detect -90 degree rotation around world Y-axis (pitch)"""
-        return self._detect_axis_rotation(1, -1)
-        
-    def detect_rotation_z_pos(self):
-        """Detect +90 degree rotation around world Z-axis (yaw)"""
-        return self._detect_axis_rotation(2, 1)
-        
-    def detect_rotation_z_neg(self):
-        """Detect -90 degree rotation around world Z-axis (yaw)"""
-        return self._detect_axis_rotation(2, -1)
-        
-    def _detect_axis_rotation(self, axis, direction):
-        """Detect rotation around specific axis in specific direction"""
-        if len(self.gyro_history) < 10:
-            return False
-            
-        # Get recent angular velocity data
-        recent_gyro = list(self.gyro_history)[-10:]
-        
-        # Check if there's sustained rotation around the specified axis
-        axis_velocities = [gyro[axis] for gyro in recent_gyro]
-        avg_velocity = np.mean(axis_velocities)
-        
-        # Check if rotation is in the correct direction and above threshold
-        if direction > 0:
-            return avg_velocity > self.rotation_threshold
-        else:
-            return avg_velocity < -self.rotation_threshold
-            
-    def detect_shaking(self):
-        """Detect shaking motion"""
-        if len(self.accel_history) < 20:
-            return False
-            
-        # Get recent acceleration data
-        recent_accel = np.array(list(self.accel_history)[-20:])
-        
-        # Calculate acceleration magnitude
-        accel_magnitude = np.linalg.norm(recent_accel, axis=1)
-        
-        # Remove gravity component (approximate)
-        accel_magnitude -= 9.81
-        
-        # Check for high-frequency, high-amplitude variations
-        accel_std = np.std(accel_magnitude)
-        accel_peak = np.max(np.abs(accel_magnitude))
-        
-        # Simple shake detection based on variation
-        return accel_std > 3.0 and accel_peak > self.shake_threshold
-        
-    def get_rotation_intensity(self):
-        """Calculate overall rotation intensity (0.0 to 1.0)"""
-        if len(self.gyro_history) < 5:
-            return 0.0
-            
-        recent_gyro = np.array(list(self.gyro_history)[-5:])
-        gyro_magnitude = np.linalg.norm(recent_gyro, axis=1)
-        avg_magnitude = np.mean(gyro_magnitude)
-        
-        # Normalize to 0-1 range (assume max meaningful rotation is 5 rad/s)
-        return min(avg_magnitude / 5.0, 1.0)
-        
-    def get_shake_intensity(self):
-        """Calculate shake intensity (0.0 to 1.0)"""
-        if len(self.accel_history) < 10:
-            return 0.0
-            
-        recent_accel = np.array(list(self.accel_history)[-10:])
-        accel_magnitude = np.linalg.norm(recent_accel, axis=1)
-        accel_std = np.std(accel_magnitude)
-        
-        # Normalize to 0-1 range (assume max meaningful shake std is 10)
-        return min(accel_std / 10.0, 1.0)
-        
-    def get_stillness_factor(self):
-        """Calculate stillness factor (1.0 = perfectly still, 0.0 = very active)"""
-        rotation_intensity = self.get_rotation_intensity()
-        shake_intensity = self.get_shake_intensity()
-        
-        # Combine both intensities
-        combined_motion = (rotation_intensity + shake_intensity) / 2.0
-        
-        # Return inverse (1.0 - motion)
-        return max(0.0, 1.0 - combined_motion)
-        
-    def get_motion_summary(self):
-        """Get summary of all detected motions"""
-        return {
-            'rotation_x_pos': self.detect_rotation_x_pos(),
-            'rotation_x_neg': self.detect_rotation_x_neg(),
-            'rotation_y_pos': self.detect_rotation_y_pos(),
-            'rotation_y_neg': self.detect_rotation_y_neg(),
-            'rotation_z_pos': self.detect_rotation_z_pos(),
-            'rotation_z_neg': self.detect_rotation_z_neg(),
-            'shaking': self.detect_shaking(),
-            'rotation_intensity': self.get_rotation_intensity(),
-            'shake_intensity': self.get_shake_intensity(),
-            'stillness_factor': self.get_stillness_factor()
-        }
-        return {
-            'rotation_x_pos': self.detect_rotation_x_pos(),
-            'rotation_x_neg': self.detect_rotation_x_neg(),
-            'rotation_y_pos': self.detect_rotation_y_pos(),
-            'rotation_y_neg': self.detect_rotation_y_neg(),
-            'rotation_z_pos': self.detect_rotation_z_pos(),
-            'rotation_z_neg': self.detect_rotation_z_neg(),
-            'shaking': self.detect_shaking(),
-            'rotation_intensity': self.get_rotation_intensity(),
-            'shake_intensity': self.get_shake_intensity(),
-            'stillness_factor': self.get_stillness_factor()
-        }
-
-
-class DiceIMUNode(Node):
+class IMUNode(Node):
     """ROS2 node for IMU pose estimation with motion detection"""
     
     def __init__(self):
@@ -441,15 +113,16 @@ class DiceIMUNode(Node):
         measurement_noise = self.get_parameter('measurement_noise').get_parameter_value().double_value
         self.publishing_rate = self.get_parameter('publishing_rate').get_parameter_value().double_value
         
-        # Publishers - using custom message types
-        self.pose_pub = self.create_publisher(IMUPose, '/imu/pose', 10)
-        self.motion_pub = self.create_publisher(MotionDetection, '/imu/motion', 10)
-        self.calibration_pub = self.create_publisher(IMUCalibration, '/imu/calibration', 10)
+        # Publishers - using custom message types and standard Pose
+        self.pose_pub = self.create_publisher(Pose, '/dice_hw/imu/pose', 10)
+        self.raw_imu_pub = self.create_publisher(RawIMU, '/dice_hw/imu/raw', 10)
+        self.motion_pub = self.create_publisher(MotionDetection, '/dice_hw/imu/motion', 10)
+        self.calibration_pub = self.create_publisher(IMUCalibration, '/dice_hw/imu/calibration', 10)
         
         # Legacy publishers for compatibility
         self.legacy_pose_pub = self.create_publisher(Pose, '/imu/pose_legacy', 10)
-        self.accel_pub = self.create_publisher(Vector3, '/imu/accel', 10)
-        self.angvel_pub = self.create_publisher(Vector3, '/imu/angvel', 10)
+        self.accel_pub = self.create_publisher(Vector3, '/dice_hw/imu/accel', 10)
+        self.angvel_pub = self.create_publisher(Vector3, '/dice_hw/imu/angvel', 10)
         self.status_pub = self.create_publisher(String, '/imu/status', 10)
         
         # Individual motion detection publishers (for backward compatibility)
@@ -479,27 +152,23 @@ class DiceIMUNode(Node):
             10
         )
         
-        # Fallback subscriber for standard IMU messages
-        self.standard_imu_sub = self.create_subscription(
-            Imu,
-            '/sensor',
-            self.standard_imu_callback,
-            10
-        )
-        
-        # State variables
+        # Initialize Kalman filter and motion detector
         self.kalman_filter = QuaternionKalmanFilter(process_noise, measurement_noise)
-        self.motion_detector = MotionDetector()
-        self.is_calibrated = False
-        self.acc_bias = np.zeros(3)
-        self.gyro_bias = np.zeros(3)
-        self.last_time = None
+        self.motion_detector = MotionDetector(history_size=50)
         
-        # Calibration data
+        # Calibration state
+        self.is_calibrated = False
+        self.calibration_requested = False
         self.calib_samples = []
         self.calib_start_time = None
-        self.calibration_requested = False
         self.calibration_timer = None
+        
+        # Sensor biases (will be set during calibration)
+        self.acc_bias = np.zeros(3)
+        self.gyro_bias = np.zeros(3)
+        
+        # Timing
+        self.last_time = None
         
         # Threading
         self.lock = threading.Lock()
@@ -602,34 +271,30 @@ class DiceIMUNode(Node):
         # Create header
         header = self.get_clock().now().to_msg()
         
-        # Publish custom IMU pose message
-        pose_msg = IMUPose()
-        pose_msg.header.stamp = header
-        pose_msg.header.frame_id = 'imu_link'
-        
-        # Set orientation
+        # Publish main Pose message for robot state
+        pose_msg = Pose()
+        pose_msg.position = Point(x=0.0, y=0.0, z=0.0)  # IMU provides orientation only
         pose_msg.orientation = Quaternion(
             x=quaternion[1],
             y=quaternion[2],
             z=quaternion[3],
             w=quaternion[0]
         )
-        
-        # Set Euler angles
-        pose_msg.roll = roll
-        pose_msg.pitch = pitch
-        pose_msg.yaw = yaw
-        
-        # Set corrected acceleration and angular velocity
-        pose_msg.linear_acceleration = Vector3(x=accel[0], y=accel[1], z=accel[2])
-        pose_msg.angular_velocity = Vector3(x=gyro[0], y=gyro[1], z=gyro[2])
-        
-        # Set covariance matrices (simplified - could be computed from Kalman filter)
-        pose_msg.orientation_covariance = [0.01] * 9
-        pose_msg.acceleration_covariance = [0.1] * 9
-        pose_msg.angular_velocity_covariance = [0.01] * 9
-        
         self.pose_pub.publish(pose_msg)
+        
+        # Publish RawIMU message with corrected sensor data
+        raw_imu_msg = RawIMU()
+        raw_imu_msg.header.stamp = header
+        raw_imu_msg.header.frame_id = 'imu_link'
+        raw_imu_msg.accel_x = accel[0]
+        raw_imu_msg.accel_y = accel[1]
+        raw_imu_msg.accel_z = accel[2]
+        raw_imu_msg.gyro_x = gyro[0]
+        raw_imu_msg.gyro_y = gyro[1]
+        raw_imu_msg.gyro_z = gyro[2]
+        raw_imu_msg.temperature = temperature
+        
+        self.raw_imu_pub.publish(raw_imu_msg)
         
         # Publish motion detection results
         motions = self.motion_detector.get_motion_summary()
@@ -858,7 +523,7 @@ class DiceIMUNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     
-    node = DiceIMUNode()
+    node = IMUNode()
     
     try:
         rclpy.spin(node)

@@ -1,4 +1,0 @@
-# Service definition for sending notifications to screens
-NotificationRequest request
----
-NotificationResponse response

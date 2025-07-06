@@ -72,12 +72,24 @@ IMU_HIST_SIZE = IMU_POLLING_RATE
 # Configure SD card path
 if NOBUS:
     SD_ROOT_PATH = os.path.join(os.path.expanduser("~"), ".dicedata")
+else:
+    SD_ROOT_PATH = "/media/pi"  # Default SD card mount point on Raspberry Pi
 if not os.path.isdir(SD_ROOT_PATH): os.makedirs(SD_ROOT_PATH)
 
 # Configure cache path
 CACHE_PATH = os.path.join(os.path.expanduser("~"), ".dicemaster/cache")
 if not os.path.isdir(CACHE_PATH):
     os.makedirs(CACHE_PATH)
+
+# Dataset management constants
+DATASETS_PATH = os.path.join(SD_ROOT_PATH, "datasets")
+DATASET_CACHE_PATH = os.path.join(CACHE_PATH, "datasets")
+DATASET_METADATA_PATH = os.path.join(CACHE_PATH, "dataset_metadata.json")
+DYNAMIC_LOADING = True
+
+# Cache size limits (in bytes)
+CACHE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1GB
+CACHE_SIZE_TARGET = 300 * 1024 * 1024   # 300MB
 
 # Configure DB Path
 # Path should have been created from previous step
