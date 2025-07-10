@@ -12,10 +12,13 @@ from time import sleep
 from queue import Queue
 import threading
 import os
+import uuid
 from abc import abstractmethod
 from typing import Dict, Optional, Tuple, List
 from dataclasses import dataclass
 from enum import Enum
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
 import spidev
 import rclpy
@@ -28,6 +31,9 @@ import tf2_ros
 import tf2_geometry_msgs
 import numpy as np
 from PIL import Image, ImageFont
+
+# Import the new message type
+from DiceMaster_Central.msg import ScreenMediaCmd
 
 from DiceMaster_Central.config.constants import (
     NOBUS, PING_CMD, TXT_CMD, IMG_CMD, OPT_CMD, OPT_END, RES_CMD, HYB_CMD,
@@ -43,7 +49,7 @@ from DiceMaster_Central.media.protocol import (
     ImageEndMessage, GIFStartMessage, GIFFrameMessage, GIFEndMessage,
     OptionMessage, split_image_into_chunks
 )
-from DiceMaster_Central.data_types.media_types import VirtualTextGroup
+from DiceMaster_Central.data_types.media_types import VirtualTextGroup, TextGroup, Image as MediaImage, MotionPicture
 
 
 # Service message types

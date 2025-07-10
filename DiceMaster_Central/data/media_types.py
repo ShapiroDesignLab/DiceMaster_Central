@@ -74,7 +74,7 @@ class TextGroup(Media):
             
             return payload
 
-class VirtualTextGroup(TextGroup):
+class OptionGroup(TextGroup):
     """Virtual text group with predefined content"""
     
     def __init__(self,

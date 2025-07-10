@@ -67,12 +67,6 @@ USAGE IN ROS2:
 
 IMPORTANT: Keep the dice completely still during calibration!
 """
-import rclpy
-from rclpy.node import Node
-from geometry_msgs.msg import Pose, Quaternion, Point, Vector3
-from sensor_msgs.msg import Imu
-from std_msgs.msg import String, Bool, Header
-from std_srvs.srv import Empty
 import threading
 import time
 from math import sin, cos, sqrt, atan2, asin, pi
@@ -86,453 +80,403 @@ except ImportError:
     I2C_AVAILABLE = False
     print("Warning: smbus2 not available. IMU I2C communication disabled.")
 
-from DiceMaster_Central.config.constants import IMU_POLLING_RATE, IMU_HIST_SIZE
-from DiceMaster_Central.utils import QuaternionKalmanFilter
-from DiceMaster_Central.hw.motion_detector import MotionDetector
-
-from dicemaster_central.msg import RawIMU, MotionDetection, IMUCalibration, NotificationRequest
-
-
-class IMUNode(Node):
-    """ROS2 node for IMU pose estimation with motion detection"""
+class IMUHardware:
+    """Base class for IMU hardware interface"""
     
-    def __init__(self):
-        super().__init__('dice_imu_node')
+    def __init__(self, i2c_bus=6, i2c_address=0x68):
+        self.i2c_bus = i2c_bus
+        self.i2c_address = i2c_address
+        self.bus = None
         
-        # Declare parameters
-        self.declare_parameter('calibration_duration', 3.0)
-        self.declare_parameter('raw_imu_topic', '/imu/raw')
-        self.declare_parameter('process_noise', 0.001)
-        self.declare_parameter('measurement_noise', 1.0)
-        self.declare_parameter('publishing_rate', 30.0)
+        # MPU6050 register addresses
+        self.PWR_MGMT_1 = 0x6B
+        self.SMPLRT_DIV = 0x19
+        self.CONFIG = 0x1A
+        self.GYRO_CONFIG = 0x1B
+        self.ACCEL_CONFIG = 0x1C
+        self.ACCEL_XOUT_H = 0x3B
+        self.ACCEL_YOUT_H = 0x3D
+        self.ACCEL_ZOUT_H = 0x3F
+        self.TEMP_OUT_H = 0x41
+        self.GYRO_XOUT_H = 0x43
+        self.GYRO_YOUT_H = 0x45
+        self.GYRO_ZOUT_H = 0x47
         
-        # Get parameters
-        self.calib_duration = self.get_parameter('calibration_duration').get_parameter_value().double_value
-        self.raw_imu_topic = self.get_parameter('raw_imu_topic').get_parameter_value().string_value
-        process_noise = self.get_parameter('process_noise').get_parameter_value().double_value
-        measurement_noise = self.get_parameter('measurement_noise').get_parameter_value().double_value
-        self.publishing_rate = self.get_parameter('publishing_rate').get_parameter_value().double_value
+        # Scaling factors
+        self.accel_scale = 16384.0  # ±2g range
+        self.gyro_scale = 131.0     # ±250°/s range
         
-        # Publishers - using custom message types and standard Pose
-        self.pose_pub = self.create_publisher(Pose, '/dice_hw/imu/pose', 10)
-        self.raw_imu_pub = self.create_publisher(RawIMU, '/dice_hw/imu/raw', 10)
-        self.motion_pub = self.create_publisher(MotionDetection, '/dice_hw/imu/motion', 10)
-        self.calibration_pub = self.create_publisher(IMUCalibration, '/dice_hw/imu/calibration', 10)
+        self._initialize_imu()
+    
+    def _initialize_imu(self):
+        """Initialize I2C connection and configure MPU6050"""
+        if not I2C_AVAILABLE:
+            print("Warning: I2C not available, using dummy data")
+            return
+            
+        try:
+            self.bus = smbus2.SMBus(self.i2c_bus)
+            
+            # Wake up the MPU6050
+            self.bus.write_byte_data(self.i2c_address, self.PWR_MGMT_1, 0)
+            time.sleep(0.1)
+            
+            # Set sample rate to 1000Hz
+            self.bus.write_byte_data(self.i2c_address, self.SMPLRT_DIV, 7)
+            # Set accelerometer configuration (±2g)
+            self.bus.write_byte_data(self.i2c_address, self.ACCEL_CONFIG, 0)
+            # Set gyroscope configuration (±250°/s)
+            self.bus.write_byte_data(self.i2c_address, self.GYRO_CONFIG, 0)
+            # Set DLPF (Digital Low Pass Filter)
+            self.bus.write_byte_data(self.i2c_address, self.CONFIG, 0)
+            print(f"IMU initialized successfully on I2C bus {self.i2c_bus} at address 0x{self.i2c_address:02X}")
+            
+        except Exception as e:
+            print(f"Error initializing IMU: {e}")
+            self.bus = None
+    
+    def _read_raw_data(self, register):
+        """Read raw 16-bit signed data from IMU register"""
+        if self.bus is None:
+            return 0
+            
+        try:
+            high = self.bus.read_byte_data(self.i2c_address, register)
+            low = self.bus.read_byte_data(self.i2c_address, register + 1)
+            value = (high << 8) + low
+            
+            # Convert to signed 16-bit
+            if value >= 32768:
+                value = value - 65536
+                
+            return value
+        except Exception as e:
+            print(f"Error reading from register 0x{register:02X}: {e}")
+            return 0
+    
+    def _poll_imu(self):
+        """Read current IMU data and return as numpy array [ax, ay, az, gx, gy, gz]"""
+        if self.bus is None:
+            # Return dummy data if I2C not available
+            return np.array([0.0, 0.0, -9.81, 0.0, 0.0, 0.0])
         
-        # Legacy publishers for compatibility
-        self.legacy_pose_pub = self.create_publisher(Pose, '/imu/pose_legacy', 10)
-        self.accel_pub = self.create_publisher(Vector3, '/dice_hw/imu/accel', 10)
-        self.angvel_pub = self.create_publisher(Vector3, '/dice_hw/imu/angvel', 10)
-        self.status_pub = self.create_publisher(String, '/imu/status', 10)
-        
-        # Individual motion detection publishers (for backward compatibility)
-        self.rotation_x_pos_pub = self.create_publisher(Bool, '/imu/motion/rotation_x_pos', 10)
-        self.rotation_x_neg_pub = self.create_publisher(Bool, '/imu/motion/rotation_x_neg', 10)
-        self.rotation_y_pos_pub = self.create_publisher(Bool, '/imu/motion/rotation_y_pos', 10)
-        self.rotation_y_neg_pub = self.create_publisher(Bool, '/imu/motion/rotation_y_neg', 10)
-        self.rotation_z_pos_pub = self.create_publisher(Bool, '/imu/motion/rotation_z_pos', 10)
-        self.rotation_z_neg_pub = self.create_publisher(Bool, '/imu/motion/rotation_z_neg', 10)
-        self.shaking_pub = self.create_publisher(Bool, '/imu/motion/shaking', 10)
+        try:
+            # Read accelerometer data
+            accel_x_raw = self._read_raw_data(self.ACCEL_XOUT_H)
+            accel_y_raw = self._read_raw_data(self.ACCEL_YOUT_H)
+            accel_z_raw = self._read_raw_data(self.ACCEL_ZOUT_H)
+            
+            # Read gyroscope data
+            gyro_x_raw = self._read_raw_data(self.GYRO_XOUT_H)
+            gyro_y_raw = self._read_raw_data(self.GYRO_YOUT_H)
+            gyro_z_raw = self._read_raw_data(self.GYRO_ZOUT_H)
+            
+            # Convert to physical units
+            accel_x = accel_x_raw / self.accel_scale * 9.81  # m/s²
+            accel_y = accel_y_raw / self.accel_scale * 9.81
+            accel_z = accel_z_raw / self.accel_scale * 9.81
+            
+            gyro_x = gyro_x_raw / self.gyro_scale * pi / 180  # rad/s
+            gyro_y = gyro_y_raw / self.gyro_scale * pi / 180
+            gyro_z = gyro_z_raw / self.gyro_scale * pi / 180
+            
+            return np.array([accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z])
+            
+        except Exception as e:
+            print(f"Error polling IMU: {e}")
+            return np.array([0.0, 0.0, -9.81, 0.0, 0.0, 0.0])
+    
+    def get_imu_data(self):
+        """Public method to get IMU data as numpy array [ax, ay, az, gx, gy, gz]"""
+        return self._poll_imu()
+    
+    def get_temperature(self):
+        """Get temperature reading in Celsius"""
+        if self.bus is None:
+            return 25.0
+            
+        try:
+            temp_raw = self._read_raw_data(self.TEMP_OUT_H)
+            return temp_raw / 340.0 + 36.53  # °C
+        except Exception as e:
+            print(f"Error reading temperature: {e}")
+            return 25.0
+    
+    def close(self):
+        """Close I2C connection"""
+        if self.bus is not None:
+            self.bus.close()
+            self.bus = None
 
-        # Notification publisher for sending notifications to screens
-        self.notification_pub = self.create_publisher(NotificationRequest, '/dice_system/notifications', 10)
 
-        # Calibration service
-        self.calibration_service = self.create_service(
-            Empty,
-            '/dice_hw/imu/calibrate',
-            self.calibrate_service_callback
-        )
+class FilteredIMUHardware(IMUHardware):
+    """IMU hardware with advanced filtering and calibration capabilities"""
+    
+    def __init__(self, i2c_bus=6, i2c_address=0x68, process_noise=0.001, measurement_noise=1.0):
+        super().__init__(i2c_bus, i2c_address)
         
-        # Subscriber to raw IMU data (custom message format)
-        self.imu_sub = self.create_subscription(
-            RawIMU,
-            self.raw_imu_topic,
-            self.raw_imu_callback,
-            10
-        )
+        # Import here to avoid circular dependency issues
+        try:
+            from DiceMaster_Central.utils.kalman_filter import QuaternionKalmanFilter
+            self.kalman_filter = QuaternionKalmanFilter(process_noise, measurement_noise)
+        except ImportError:
+            print("Warning: QuaternionKalmanFilter not available, using basic filtering")
+            self.kalman_filter = None
         
-        # Initialize Kalman filter and motion detector
-        self.kalman_filter = QuaternionKalmanFilter(process_noise, measurement_noise)
-        self.motion_detector = MotionDetector(history_size=50)
-        
-        # Calibration state
+        # Calibration parameters
         self.is_calibrated = False
         self.calibration_requested = False
-        self.calib_samples = []
-        self.calib_start_time = None
-        self.calibration_timer = None
+        self.calibration_duration = 3.0  # seconds
+        self.calibration_samples = []
+        self.calibration_start_time = None
         
-        # Sensor biases (will be set during calibration)
-        self.acc_bias = np.zeros(3)
+        # Sensor biases (set during calibration)
+        self.accel_bias = np.zeros(3)
         self.gyro_bias = np.zeros(3)
         
-        # Timing
+        # Current state
+        self.current_quaternion = np.array([1.0, 0.0, 0.0, 0.0])  # w, x, y, z
         self.last_time = None
         
-        # Threading
+        # Threading lock for thread-safe operations
         self.lock = threading.Lock()
-        self.running = True
         
-        # Publishing timer
-        self.timer = self.create_timer(1.0/self.publishing_rate, self.timer_callback)
+        print(f"FilteredIMUHardware initialized with Kalman filter: {self.kalman_filter is not None}")
+    
+    def start_calibration(self, duration=3.0):
+        """Start calibration process
         
-        # Current sensor data
-        self.current_accel = np.zeros(3)
-        self.current_gyro = np.zeros(3)
-        self.current_quaternion = np.array([1.0, 0.0, 0.0, 0.0])
-        self.current_temperature = 0.0
-        
-        # Don't start calibration automatically - wait for service call
-        self.get_logger().info("Dice IMU node initialized - call /dice_hw/imu/calibrate service to start calibration")
-        
-    def raw_imu_callback(self, msg):
-        """Callback for custom RawIMU data"""
-        current_time = time.time()
-        
-        # Extract accelerometer and gyroscope data from custom message
-        accel = np.array([msg.accel_x, msg.accel_y, msg.accel_z])
-        gyro = np.array([msg.gyro_x, msg.gyro_y, msg.gyro_z])
-        
+        Args:
+            duration: Calibration duration in seconds
+        """
         with self.lock:
-            self.current_temperature = msg.temperature
+            if self.calibration_requested:
+                print("Warning: Calibration already in progress")
+                return False
+                
+            self.calibration_duration = duration
+            self.calibration_requested = True
+            self.calibration_samples = []
+            self.calibration_start_time = None
+            self.is_calibrated = False
             
-        self._process_imu_data(accel, gyro, current_time)
+            print(f"Calibration started - keep IMU perfectly still for {duration} seconds")
+            return True
+    
+    def _handle_calibration(self, imu_data):
+        """Handle calibration data collection
         
-    def standard_imu_callback(self, msg):
-        """Callback for standard sensor_msgs/Imu data (fallback)"""
+        Args:
+            imu_data: Raw IMU data array [ax, ay, az, gx, gy, gz]
+        """
         current_time = time.time()
         
-        # Extract accelerometer and gyroscope data from standard message
-        accel = np.array([
-            msg.linear_acceleration.x,
-            msg.linear_acceleration.y,
-            msg.linear_acceleration.z
-        ])
+        if self.calibration_start_time is None:
+            self.calibration_start_time = current_time
+            print("Starting calibration data collection...")
         
-        gyro = np.array([
-            msg.angular_velocity.x,
-            msg.angular_velocity.y,
-            msg.angular_velocity.z
-        ])
+        elapsed = current_time - self.calibration_start_time
         
-        self._process_imu_data(accel, gyro, current_time)
-        
-    def _process_imu_data(self, accel, gyro, current_time):
-        """Common processing for both message types"""
-        # Handle calibration
-        if self.calibration_requested and not self.is_calibrated:
-            self._handle_calibration(accel, gyro, current_time)
-            return
+        if elapsed < self.calibration_duration:
+            # Collect calibration data
+            self.calibration_samples.append(imu_data.copy())
             
+            # Progress update every second (estimate based on sample count)
+            if len(self.calibration_samples) % 25 == 0:  # Every 25 samples (roughly every 0.5 seconds)
+                remaining = self.calibration_duration - elapsed
+                print(f"Calibration progress: {elapsed:.1f}s / {self.calibration_duration:.1f}s (remaining: {remaining:.1f}s) - Samples: {len(self.calibration_samples)}")
+            
+            return None  # Return None during calibration
+        else:
+            # Finish calibration
+            self._finish_calibration()
+            return None
+    
+    def _finish_calibration(self):
+        """Complete the calibration process"""
+        if len(self.calibration_samples) == 0:
+            print("Calibration failed: No data collected")
+            self.calibration_requested = False
+            return
+        
+        # Calculate biases
+        samples = np.array(self.calibration_samples)
+        
+        # Accelerometer bias (subtract gravity from Z-axis)
+        self.accel_bias = np.mean(samples[:, :3], axis=0)
+        self.accel_bias[2] += 9.81  # Assume Z-axis should read -9.81 m/s² when upright
+        
+        # Gyroscope bias
+        self.gyro_bias = np.mean(samples[:, 3:6], axis=0)
+        
+        # Calculate calibration quality
+        accel_std = np.std(samples[:, :3], axis=0)
+        gyro_std = np.std(samples[:, 3:6], axis=0)
+        
+        # Set calibration complete
+        self.is_calibrated = True
+        self.calibration_requested = False
+        
+        print("Calibration complete!")
+        print(f"Accelerometer bias: [{self.accel_bias[0]:.3f}, {self.accel_bias[1]:.3f}, {self.accel_bias[2]:.3f}] m/s²")
+        print(f"Gyroscope bias: [{self.gyro_bias[0]:.6f}, {self.gyro_bias[1]:.6f}, {self.gyro_bias[2]:.6f}] rad/s")
+        print(f"Accelerometer std: [{accel_std[0]:.3f}, {accel_std[1]:.3f}, {accel_std[2]:.3f}] m/s²")
+        print(f"Gyroscope std: [{gyro_std[0]:.6f}, {gyro_std[1]:.6f}, {gyro_std[2]:.6f}] rad/s")
+        
+        # Clear calibration data
+        self.calibration_samples = []
+        
+        # Quality assessment
+        if np.mean(accel_std) < 0.5 and np.mean(gyro_std) < 0.1:
+            print("Calibration quality: GOOD")
+        else:
+            print("Calibration quality: MODERATE - consider recalibrating")
+    
+    def _poll_imu(self):
+        """Read and process IMU data with calibration and filtering
+        
+        Returns:
+            numpy array [ax, ay, az, gx, gy, gz] or None if in calibration
+        """
+        # Get raw data
+        raw_data = super()._poll_imu()
+        
+        # Handle calibration if requested
+        if self.calibration_requested:
+            return self._handle_calibration(raw_data)
+        
         # Skip processing if not calibrated
         if not self.is_calibrated:
-            return
-            
-        # Apply bias correction
+            print("Warning: IMU not calibrated. Call start_calibration() first.")
+            return raw_data
+        
+        # Apply bias correction FIRST
         with self.lock:
-            accel_corrected = accel - self.acc_bias
-            gyro_corrected = gyro - self.gyro_bias
+            corrected_data = raw_data.copy()
+            corrected_data[:3] -= self.accel_bias
+            corrected_data[3:6] -= self.gyro_bias
+        
+        # Apply Kalman filter to the bias-corrected data
+        if self.kalman_filter is not None:
+            current_time = time.time()
             
-            # Update current sensor data
-            self.current_accel = accel_corrected
-            self.current_gyro = gyro_corrected
-            
-        # Update Kalman filter
-        if self.last_time is not None:
-            dt = current_time - self.last_time
-            if 0 < dt < 0.1:  # Reasonable time step
-                self.kalman_filter.predict(dt, gyro_corrected)
-                self.kalman_filter.update(accel_corrected)
-                
-                # Get quaternion from Kalman filter
-                with self.lock:
-                    self.current_quaternion = self.kalman_filter.get_quaternion()
+            if self.last_time is not None:
+                dt = current_time - self.last_time
+                if 0 < dt < 0.1:  # Reasonable time step
+                    # Update Kalman filter with bias-corrected data
+                    self.kalman_filter.predict(dt, corrected_data[3:6])  # bias-corrected gyro data
+                    self.kalman_filter.update(corrected_data[:3])  # bias-corrected accel data
                     
-                # Update motion detector
-                self.motion_detector.update(accel_corrected, gyro_corrected, self.current_quaternion)
-                
-        self.last_time = current_time
-        
-    def timer_callback(self):
-        """Timer callback for publishing data"""
-        if not self.is_calibrated:
-            return
+                    # Get current quaternion from Kalman filter
+                    with self.lock:
+                        self.current_quaternion = self.kalman_filter.get_quaternion()
             
+            self.last_time = current_time
+        
+        return corrected_data
+    
+    def get_quaternion(self):
+        """Get current orientation quaternion [w, x, y, z]"""
         with self.lock:
-            accel = self.current_accel.copy()
-            gyro = self.current_gyro.copy()
-            quaternion = self.current_quaternion.copy()
-            temperature = self.current_temperature
-            
-        # Get Euler angles
-        roll, pitch, yaw = self.kalman_filter.get_euler_angles()
-        
-        # Create header
-        header = self.get_clock().now().to_msg()
-        
-        # Publish main Pose message for robot state
-        pose_msg = Pose()
-        pose_msg.position = Point(x=0.0, y=0.0, z=0.0)  # IMU provides orientation only
-        pose_msg.orientation = Quaternion(
-            x=quaternion[1],
-            y=quaternion[2],
-            z=quaternion[3],
-            w=quaternion[0]
-        )
-        self.pose_pub.publish(pose_msg)
-        
-        # Publish RawIMU message with corrected sensor data
-        raw_imu_msg = RawIMU()
-        raw_imu_msg.header.stamp = header
-        raw_imu_msg.header.frame_id = 'imu_link'
-        raw_imu_msg.accel_x = accel[0]
-        raw_imu_msg.accel_y = accel[1]
-        raw_imu_msg.accel_z = accel[2]
-        raw_imu_msg.gyro_x = gyro[0]
-        raw_imu_msg.gyro_y = gyro[1]
-        raw_imu_msg.gyro_z = gyro[2]
-        raw_imu_msg.temperature = temperature
-        
-        self.raw_imu_pub.publish(raw_imu_msg)
-        
-        # Publish motion detection results
-        motions = self.motion_detector.get_motion_summary()
-        
-        motion_msg = MotionDetection()
-        motion_msg.header.stamp = header
-        motion_msg.header.frame_id = 'imu_link'
-        
-        motion_msg.rotation_x_positive = motions['rotation_x_pos']
-        motion_msg.rotation_x_negative = motions['rotation_x_neg']
-        motion_msg.rotation_y_positive = motions['rotation_y_pos']
-        motion_msg.rotation_y_negative = motions['rotation_y_neg']
-        motion_msg.rotation_z_positive = motions['rotation_z_pos']
-        motion_msg.rotation_z_negative = motions['rotation_z_neg']
-        motion_msg.shaking = motions['shaking']
-        motion_msg.rotation_intensity = motions['rotation_intensity']
-        motion_msg.shake_intensity = motions['shake_intensity']
-        motion_msg.stillness_factor = motions['stillness_factor']
-        
-        self.motion_pub.publish(motion_msg)
-        
-        # Publish legacy/compatibility messages
-        legacy_pose_msg = Pose()
-        legacy_pose_msg.position = Point(x=0.0, y=0.0, z=0.0)
-        legacy_pose_msg.orientation = Quaternion(
-            x=quaternion[1],
-            y=quaternion[2],
-            z=quaternion[3],
-            w=quaternion[0]
-        )
-        self.legacy_pose_pub.publish(legacy_pose_msg)
-        
-        # Publish individual sensor data
-        accel_msg = Vector3(x=accel[0], y=accel[1], z=accel[2])
-        angvel_msg = Vector3(x=gyro[0], y=gyro[1], z=gyro[2])
-        
-        self.accel_pub.publish(accel_msg)
-        self.angvel_pub.publish(angvel_msg)
-        
-        # Publish individual motion detection results for backward compatibility
-        self.rotation_x_pos_pub.publish(Bool(data=motions['rotation_x_pos']))
-        self.rotation_x_neg_pub.publish(Bool(data=motions['rotation_x_neg']))
-        self.rotation_y_pos_pub.publish(Bool(data=motions['rotation_y_pos']))
-        self.rotation_y_neg_pub.publish(Bool(data=motions['rotation_y_neg']))
-        self.rotation_z_pos_pub.publish(Bool(data=motions['rotation_z_pos']))
-        self.rotation_z_neg_pub.publish(Bool(data=motions['rotation_z_neg']))
-        self.shaking_pub.publish(Bool(data=motions['shaking']))
-        
-    def _handle_calibration(self, accel, gyro, current_time):
-        """Handle calibration process"""
-        if self.calib_start_time is None:
-            self.calib_start_time = current_time
-            self.publish_calibration_status("CALIBRATING", 0.0)
-            self.get_logger().info(f"Starting calibration data collection for {self.calib_duration} seconds...")
-            self._send_notification_to_all_screens("info", "Calibration data collection started", 2.0)
-            
-        # Calculate progress
-        elapsed = current_time - self.calib_start_time
-        progress = min(elapsed / self.calib_duration, 1.0)
-        
-        # Collect calibration data
-        if elapsed < self.calib_duration:
-            self.calib_samples.append((accel.copy(), gyro.copy()))
-            self.publish_calibration_status("CALIBRATING", progress)
-            
-            # Send progress notifications every second
-            if len(self.calib_samples) % 30 == 0:  # Assuming ~30Hz data rate
-                remaining = int(self.calib_duration - elapsed)
-                if remaining > 0:
-                    self._send_notification_to_all_screens("info", 
-                        f"Calibrating... {remaining}s remaining", 1.5)
-            return
-            
-        # Finish calibration
-        if len(self.calib_samples) > 0:
-            acc_samples = np.array([s[0] for s in self.calib_samples])
-            gyro_samples = np.array([s[1] for s in self.calib_samples])
-            
-            with self.lock:
-                self.acc_bias = np.mean(acc_samples, axis=0)
-                self.gyro_bias = np.mean(gyro_samples, axis=0)
-                # Assume Z-axis should read -9.81 m/s² when upright
-                self.acc_bias[2] += 9.81
-                self.is_calibrated = True
-                self.calibration_requested = False
-                
-            # Calculate calibration quality metrics
-            acc_std = np.std(acc_samples, axis=0)
-            gyro_std = np.std(gyro_samples, axis=0)
-            
-            self.get_logger().info("Calibration complete")
-            self.get_logger().info(f"Accelerometer bias: {self.acc_bias}")
-            self.get_logger().info(f"Gyroscope bias: {self.gyro_bias}")
-            self.get_logger().info(f"Accelerometer std: {acc_std}")
-            self.get_logger().info(f"Gyroscope std: {gyro_std}")
-            
-            self.publish_calibration_status("READY", 1.0, acc_std, gyro_std)
-            
-            # Send completion notification
-            quality = "good" if np.mean(acc_std) < 0.5 and np.mean(gyro_std) < 0.1 else "moderate"
-            self._send_notification_to_all_screens("info", 
-                f"IMU Calibration Complete! Quality: {quality}", 4.0)
-            
-            # Clear calibration data
-            self.calib_samples.clear()
+            return self.current_quaternion.copy()
+    
+    def get_euler_angles(self):
+        """Get current Euler angles (roll, pitch, yaw) in radians"""
+        if self.kalman_filter is not None:
+            return self.kalman_filter.get_euler_angles()
         else:
-            self.get_logger().error("Calibration failed - no data collected")
-            self.publish_calibration_status("CALIBRATION_FAILED", 0.0)
-            self._send_notification_to_all_screens("error", 
-                "IMU Calibration Failed - No data collected", 4.0)
+            # Simple conversion from accelerometer data
+            data = self.get_imu_data()
+            if data is None:
+                return 0.0, 0.0, 0.0
+            
+            ax, ay, az = data[:3]
+            
+            # Calculate roll and pitch from accelerometer
+            roll = atan2(ay, az)
+            pitch = atan2(-ax, sqrt(ay*ay + az*az))
+            yaw = 0.0  # Cannot determine yaw from accelerometer alone
+            
+            return roll, pitch, yaw
+    
+    def get_calibration_status(self):
+        """Get current calibration status
+        
+        Returns:
+            dict: Status information
+        """
+        with self.lock:
+            status = {
+                'is_calibrated': self.is_calibrated,
+                'calibration_requested': self.calibration_requested,
+                'accel_bias': self.accel_bias.copy() if self.is_calibrated else None,
+                'gyro_bias': self.gyro_bias.copy() if self.is_calibrated else None,
+                'samples_collected': len(self.calibration_samples),
+                'calibration_duration': self.calibration_duration
+            }
+            
+            if self.calibration_requested and self.calibration_start_time is not None:
+                elapsed = time.time() - self.calibration_start_time
+                status['calibration_progress'] = min(elapsed / self.calibration_duration, 1.0)
+                status['calibration_remaining'] = max(0, self.calibration_duration - elapsed)
+            
+            return status
+    
+    def save_calibration(self, filename):
+        """Save calibration data to file"""
+        if not self.is_calibrated:
+            print("Warning: Cannot save calibration - not calibrated")
+            return False
+        
+        try:
+            calibration_data = {
+                'accel_bias': self.accel_bias.tolist(),
+                'gyro_bias': self.gyro_bias.tolist(),
+                'timestamp': time.time()
+            }
+            
+            import json
+            with open(filename, 'w') as f:
+                json.dump(calibration_data, f, indent=2)
+            
+            print(f"Calibration saved to {filename}")
+            return True
+        except Exception as e:
+            print(f"Error saving calibration: {e}")
+            return False
+    
+    def load_calibration(self, filename):
+        """Load calibration data from file"""
+        try:
+            import json
+            with open(filename, 'r') as f:
+                calibration_data = json.load(f)
+            
+            self.accel_bias = np.array(calibration_data['accel_bias'])
+            self.gyro_bias = np.array(calibration_data['gyro_bias'])
+            self.is_calibrated = True
             self.calibration_requested = False
             
-    def publish_calibration_status(self, status, progress, acc_std=None, gyro_std=None):
-        """Publish calibration status using custom message"""
-        # Legacy status message
-        status_msg = String()
-        status_msg.data = status
-        self.status_pub.publish(status_msg)
-        
-        # Custom calibration message
-        calib_msg = IMUCalibration()
-        calib_msg.header.stamp = self.get_clock().now().to_msg()
-        calib_msg.header.frame_id = 'imu_link'
-        calib_msg.status = status
-        calib_msg.progress = progress
-        calib_msg.calibration_duration = self.calib_duration
-        calib_msg.sample_count = len(self.calib_samples)
-        
-        if self.is_calibrated:
-            calib_msg.accelerometer_bias = Vector3(
-                x=self.acc_bias[0], y=self.acc_bias[1], z=self.acc_bias[2]
-            )
-            calib_msg.gyroscope_bias = Vector3(
-                x=self.gyro_bias[0], y=self.gyro_bias[1], z=self.gyro_bias[2]
-            )
-            
-        if acc_std is not None:
-            calib_msg.accelerometer_std = float(np.mean(acc_std))
-        if gyro_std is not None:
-            calib_msg.gyroscope_std = float(np.mean(gyro_std))
-            
-        self.calibration_pub.publish(calib_msg)
-        
-    def publish_status(self, status):
-        """Legacy method for backward compatibility"""
-        self.publish_calibration_status(status, 0.0)
-        
-    def calibrate_service_callback(self, request, response):
-        """Service callback to start IMU calibration"""
-        if self.calibration_requested:
-            self.get_logger().warn("Calibration already in progress")
-            return response
-            
-        self.get_logger().info("Calibration service called - starting calibration process")
-        
-        # Reset calibration state
-        with self.lock:
-            self.is_calibrated = False
-            self.calibration_requested = True
-            self.calib_samples.clear()
-            self.calib_start_time = None
-            
-        # Send initial notification to all screens
-        self._send_notification_to_all_screens("info", 
-            f"IMU Calibration Starting - Keep dice perfectly still for {int(self.calib_duration)} seconds")
-        
-        # Start countdown notifications
-        self._start_calibration_countdown()
-        
-        return response
+            print(f"Calibration loaded from {filename}")
+            print(f"Accelerometer bias: [{self.accel_bias[0]:.3f}, {self.accel_bias[1]:.3f}, {self.accel_bias[2]:.3f}] m/s²")
+            print(f"Gyroscope bias: [{self.gyro_bias[0]:.6f}, {self.gyro_bias[1]:.6f}, {self.gyro_bias[2]:.6f}] rad/s")
+            return True
+        except Exception as e:
+            print(f"Error loading calibration: {e}")
+            return False
     
-    def _send_notification_to_all_screens(self, level, content, duration=3.0):
-        """Send notification to all screens (screen IDs 0-7)"""
-        for screen_id in range(8):  # Assuming up to 8 screens
-            notification = NotificationRequest()
-            notification.screen_id = screen_id
-            notification.level = level
-            notification.content = content
-            notification.duration = duration
-            self.notification_pub.publish(notification)
-    
-    def _start_calibration_countdown(self):
-        """Start countdown timer for calibration notifications"""
-        # Cancel any existing timer
-        if self.calibration_timer is not None:
-            self.calibration_timer.cancel()
-            
-        # Send countdown notifications every second
-        countdown_duration = int(self.calib_duration)
-        self._calibration_countdown_step(countdown_duration)
-    
-    def _calibration_countdown_step(self, remaining_seconds):
-        """Step function for calibration countdown"""
-        if not self.calibration_requested:
-            return
-            
-        if remaining_seconds > 0:
-            # Send countdown notification
-            self._send_notification_to_all_screens("info", 
-                f"Calibration starts in {remaining_seconds} seconds - Keep dice still!", 2.0)
-            
-            # Schedule next countdown step
-            self.calibration_timer = self.create_timer(1.0, 
-                lambda: self._calibration_countdown_step(remaining_seconds - 1))
-            self.calibration_timer.cancel()  # Cancel immediately to make it one-shot
-            self.calibration_timer = threading.Timer(1.0, 
-                lambda: self._calibration_countdown_step(remaining_seconds - 1))
-            self.calibration_timer.start()
-        else:
-            # Start actual calibration
-            self._send_notification_to_all_screens("info", 
-                f"Calibration in progress... {int(self.calib_duration)}s remaining", 1.0)
-            self.get_logger().info("Starting calibration data collection")
-    
-    def destroy_node(self):
-        """Clean shutdown"""
-        self.running = False
+    def _euler_to_quaternion(self, roll, pitch, yaw):
+        """Convert Euler angles to quaternion"""
+        cr = cos(roll / 2.0)
+        sr = sin(roll / 2.0)
+        cp = cos(pitch / 2.0)
+        sp = sin(pitch / 2.0)
+        cy = cos(yaw / 2.0)
+        sy = sin(yaw / 2.0)
         
-        # Cancel calibration timer if active
-        if self.calibration_timer is not None:
-            self.calibration_timer.cancel()
-            
-        super().destroy_node()
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    
-    node = IMUNode()
-    
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
+        w = cr * cp * cy + sr * sp * sy
+        x = sr * cp * cy - cr * sp * sy
+        y = cr * sp * cy + sr * cp * sy
+        z = cr * cp * sy - sr * sp * cy
+        
+        return np.array([w, x, y, z])
