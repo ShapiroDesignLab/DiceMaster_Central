@@ -2,7 +2,7 @@ import json
 import os
 from abc import ABC, abstractmethod
 from typing import List, Optional, Any, Union, Tuple
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, validator
 
 from DiceMaster_Central.config.constants import (
     ImageFormat,
@@ -16,8 +16,6 @@ from DiceMaster_Central.media_typing.protocol import (
     ImageStartMessage,
     ImageChunkMessage,
     ImageEndMessage,
-    BacklightOnMessage,
-    BacklightOffMessage,
 )
 
 class Media(BaseModel, ABC):
@@ -34,9 +32,54 @@ class Media(BaseModel, ABC):
         self.content = self._load_content()
     
     @abstractmethod
-    def to_msg(self):
-        """Load the content of the media file."""
+    def to_msg(self, **kwargs) -> Any:
+        """Generate protocol messages for the media."""
         pass
+
+class TextEntry(BaseModel):
+    """Individual text entry with position, font, color, and content"""
+    x_cursor: int = Field(default=48, description="X cursor position (0-479)")
+    y_cursor: int = Field(default=48, description="Y cursor position (0-479)")
+    font_id: int = Field(default=0, description="Font ID (0-5)")
+    font_color: int = Field(default=0xFFFF, description="Font color (16-bit RGB565)")
+    text: str = Field(default='', description="Text content (UTF-8 encoded)")
+    
+    @validator('x_cursor')
+    def validate_x_cursor(cls, v):
+        if not 0 <= v < 480:
+            raise ValueError(f"X cursor position ({v}) must be between 0 and 479")
+        return v
+    
+    @validator('y_cursor')
+    def validate_y_cursor(cls, v):
+        if not 0 <= v < 480:
+            raise ValueError(f"Y cursor position ({v}) must be between 0 and 479")
+        return v
+    
+    @validator('font_id')
+    def validate_font_id(cls, v):
+        try:
+            FontID(v)
+        except ValueError:
+            raise ValueError(f"Font ID {v} not available!")
+        return v
+    
+    @validator('font_color')
+    def validate_font_color(cls, v):
+        if not 0 <= v <= 0xFFFF:
+            raise ValueError(f"Font color must be a 16-bit value (0-65535), got {v}")
+        return v
+    
+    @validator('text')
+    def validate_text_length(cls, v):
+        text_bytes = v.encode('utf-8')
+        if len(text_bytes) > 255:
+            raise ValueError(f"Text string too long (max 255 bytes): '{v[:50]}...'")
+        return v
+    
+    def to_tuple(self) -> Tuple[int, int, int, int, str]:
+        """Convert to tuple format for protocol compatibility"""
+        return (self.x_cursor, self.y_cursor, self.font_id, self.font_color, self.text)
 
 class TextGroup(Media):
     """Text group media loaded from JSON files - implements protocol TEXT_BATCH format"""
@@ -44,8 +87,7 @@ class TextGroup(Media):
     
     # Protocol fields for TEXT_BATCH message
     bg_color: int = Field(default=0x0000, description="Background color (16-bit RGB565)")
-    font_color: int = Field(default=0xFFFF, description="Font color (16-bit RGB565)")
-    texts: List[Tuple[int, int, int, str]] = Field(default_factory=list, description="List of (x, y, font_id, text) tuples")
+    texts: List[TextEntry] = Field(default_factory=list, description="List of TextEntry objects")
     
     @validator('file_path')
     def validate_json_file(cls, v):
@@ -53,47 +95,44 @@ class TextGroup(Media):
         if not v.endswith(".json"):
             raise ValueError("TextGroup file must be a .json file")
         return v
-    
-    @validator('texts')
-    def validate_text_strings(cls, v):
-        """Validate text string about cursor location, font type, and length"""
-        """Validate that text strings don't exceed 255 bytes when UTF-8 encoded"""
-        for x, y, font_id, text in v:
-            if not 0 <= x < 480 or not 0 <= y < 480:
-                raise ValueError(f"Text Cursor location ({x}, {y}) not allowed!")
-            try:
-                font = FontID(font_id)
-            except:
-                raise ValueError(f"Font {font_id} not available!")
-            else:
-                text_bytes = text.encode('utf-8')
-                if len(text_bytes) > 255:
-                    raise ValueError(f"Text string too long (max 255 bytes): '{text[:50]}...'")
-        return v
-    
-    def to_msg(self) -> Text:
+
+    def _load_content(self):
         with open(self.file_path, 'r', encoding='utf-8') as f:
             payload = json.load(f)
         
         # Load protocol-required fields from JSON
         self.bg_color = payload.get('bg_color', 0x0000)
-        self.font_color = payload.get('font_color', 0xFFFF)
         
-        # Load text entries - expect array of objects with x, y, font_id, text
+        # Load text entries - expect array of objects with x, y, font_id, font_color, text
         texts_data = payload.get('texts', [])
         self.texts = []
         
         for text_entry in texts_data:
             try:
-                x = text_entry.get('x', 0)
-                y = text_entry.get('y', 0) 
-                font_id = text_entry.get('font_id', 0)
-                text = text_entry.get('text', '')
-                self.texts.append((x, y, font_id, text))
-            except:
-                print("Failed to create textgroup msg!")
+                # Support both old format (without font_color) and new format (with font_color)
+                text_obj = TextEntry(
+                    x_cursor=text_entry.get('x', text_entry.get('x_cursor', 0)),
+                    y_cursor=text_entry.get('y', text_entry.get('y_cursor', 0)),
+                    font_id=text_entry.get('font_id', 0),
+                    font_color=text_entry.get('font_color', 0xFFFF),  # Default white
+                    text=text_entry.get('text', '')
+                )
+                self.texts.append(text_obj)
+            except Exception as e:
+                print(f"Failed to create TextEntry: {e}")
         
-
+        return payload
+    
+    def to_msg(self, **kwargs) -> TextBatchMessage:
+        """Create protocol message with rotation support"""
+        rotation = kwargs.get('rotation', Rotation.ROTATION_0)
+        
+        # Pass TextEntry objects directly for optimized encoding
+        return TextBatchMessage(
+            bg_color=self.bg_color,
+            texts=self.texts,  # Pass TextEntry objects directly
+            rotation=rotation
+        )
 
 class OptionGroup(TextGroup):
     """Virtual text group with predefined content"""
@@ -101,14 +140,12 @@ class OptionGroup(TextGroup):
     def __init__(self,
         file_path: str,
         bg_color: int = 0x0000,
-        font_color: int = 0xFFFF, 
-        texts: List[Tuple[int, int, int, str]] = None,
+        texts: Optional[List[TextEntry]] = None,
         **data
     ):
         # Set the content before calling parent init
         self._predefined_content = {
             'bg_color': bg_color,
-            'font_color': font_color,
             'texts': texts or []
         }
         super().__init__(file_path=file_path, **data)
@@ -116,7 +153,6 @@ class OptionGroup(TextGroup):
     def _load_content(self):
         # Load from predefined content instead of file
         self.bg_color = self._predefined_content['bg_color']
-        self.font_color = self._predefined_content['font_color']
         self.texts = self._predefined_content['texts']
         return self._predefined_content
 
@@ -205,9 +241,55 @@ class Image(Media):
     def _calculate_chunks(self, total_size: int, chunk_size: int = 2048) -> int:
         """Calculate number of chunks needed for transfer"""
         return (total_size + chunk_size - 1) // chunk_size  # Ceiling division
+    
+    def to_msg(self, **kwargs) -> List[Union[ImageStartMessage, ImageChunkMessage, ImageEndMessage]]:
+        """Generate all protocol messages for image transfer"""
+        rotation = kwargs.get('rotation', Rotation.ROTATION_0)
+        chunk_size = kwargs.get('chunk_size', 2048)
+        
+        if not self.content:
+            raise ValueError("Image content not loaded")
+            
+        messages = []
+        
+        # Create start message
+        start_message = ImageStartMessage(
+            image_id=self.image_id,
+            image_format=self.image_format,
+            resolution=self.resolution,
+            delay_time=self.delay_time,
+            total_size=self.total_size,
+            num_chunks=self.num_chunks,
+            rotation=rotation
+        )
+        messages.append(start_message)
+        
+        # Create chunk messages
+        chunk_id = 0
+        start_location = 0
+        
+        for i in range(0, len(self.content), chunk_size):
+            chunk_data = self.content[i:i + chunk_size]
+            
+            chunk_message = ImageChunkMessage(
+                image_id=self.image_id,
+                chunk_id=chunk_id,
+                start_location=start_location,
+                chunk_data=chunk_data
+            )
+            messages.append(chunk_message)
+            
+            chunk_id += 1
+            start_location += len(chunk_data)
+        
+        # Create end message
+        end_message = ImageEndMessage(image_id=self.image_id)
+        messages.append(end_message)
+        
+        return messages
 
 
-class MotionPicture(Media):
+class GIF(Media):
     """Motion picture (animated) media from frame directories - implements multi-frame IMAGE transfer"""
     media_type: str = Field(default='motion_picture', const=True)
     
@@ -329,3 +411,43 @@ class MotionPicture(Media):
             'total_size': len(frame_data),
             'num_chunks': (len(frame_data) + 2047) // 2048  # Ceiling division for 2KB chunks
         }
+    
+    def to_msg(self, **kwargs) -> List[List[Union[ImageStartMessage, ImageChunkMessage, ImageEndMessage]]]:
+        """Return a list of Image.to_msg() lists for each frame"""
+        rotation = kwargs.get('rotation', Rotation.ROTATION_0)
+        chunk_size = kwargs.get('chunk_size', 2048)
+        
+        if not self.frames_data:
+            raise ValueError("No frames loaded")
+        
+        frame_messages = []
+        
+        # Create an Image object for each frame and get its messages
+        for frame_index, frame_data in enumerate(self.frames_data):
+            # Create a temporary file for this frame
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
+                temp_file.write(frame_data)
+                temp_path = temp_file.name
+            
+            try:
+                # Create Image object for this frame
+                frame_image = Image(
+                    file_path=temp_path,
+                    image_id=self.image_id + frame_index,
+                    delay_time=self.delay_time
+                )
+                
+                # Get the protocol messages for this frame
+                messages = frame_image.to_msg(rotation=rotation, chunk_size=chunk_size)
+                frame_messages.append(messages)
+                
+            finally:
+                # Clean up temporary file
+                os.unlink(temp_path)
+        
+        return frame_messages
+
+
+# Alias for backward compatibility
+MotionPicture = GIF

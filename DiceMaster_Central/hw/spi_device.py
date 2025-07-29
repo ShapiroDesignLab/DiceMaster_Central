@@ -26,9 +26,9 @@ class SPIDevice:
         self.spi = spidev.SpiDev()
         # Open, configure, and close
         self.spi.open(self.bus, self.dev)
-        self.spi.max_speed_hz = spi_config.get("max_speed_hz", 96000)
-        self.spi.mode = spi_config.get("mode", 0b00)          # Set SPI Mode to 0
-        self.spi.threewire = spi_config.get("threewire", False)  # Set three-wire mode if needed
+        self.spi.max_speed_hz = spi_config.max_speed_hz
+        self.spi.mode = spi_config.mode
+        self.spi.threewire = False
         self.spi.close()
 
     def __del__(self):
@@ -57,5 +57,5 @@ class SPIDevice:
         assert self.awake
         if self.verbose:
             print(f"Written {len(msg)}")
-            print(f"Sent {msg}")
+            print(f"Sent {[hex(byte) for byte in msg]}")
         self.spi.writebytes(msg)           # Send the chunk

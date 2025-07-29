@@ -24,6 +24,13 @@ class MessageType(IntEnum):
     ACKNOWLEDGMENT = 0x09
     ERROR_MESSAGE = 0x0A
 
+# Service message types
+class ContentType(IntEnum):
+    TEXT = 0
+    IMAGE = 1
+    GIF = 2
+    OPTION = 3
+
 class Rotation(IntEnum):
     """Rotation values for text groups and images"""
     ROTATION_0 = 0
@@ -47,12 +54,25 @@ class ImageResolution(IntEnum):
 
 
 class FontID(IntEnum):
-    NOTEXT=0,
-    TF = 1,
-    ARABIC=2,
-    CHINESE=3,
-    CYRILLIC=4,
+    NOTEXT=0
+    TF = 1
+    ARABIC=2
+    CHINESE=3
+    CYRILLIC=4
     DEVANAGARI=5
+
+class MessagePriority(IntEnum):
+    """Message priority constants"""
+    CRITICAL = 1    # Ping, errors
+    HIGH = 2        # Text, single images
+    NORMAL = 5      # GIF frames
+    LOW = 8         # Background tasks
+
+class RequestStatus(IntEnum):
+    PENDING = 0
+    PROCESSING = 1
+    COMPLETED = 2
+    FAILED = 3
 
 ##########################
 # 
@@ -73,9 +93,7 @@ IMU_POLLING_RATE = 200
 IMU_HIST_SIZE = IMU_POLLING_RATE
 
 ##########################
-# 
 # File System Configs
-# 
 ##########################
 
 # Configure SD card path
@@ -110,7 +128,7 @@ DB_PATH = os.path.join(os.path.expanduser("~"), ".dicemaster/fdb.sqlite")
 # Screen Configs
 # 
 ##########################
-NUM_SCREEN = 1
+NUM_SCREEN = 6
 
 USING_ORIENTED_SCREENS = False
 
@@ -119,15 +137,11 @@ SCREEN_BOOT_DELAY = 3
 SCREEN_PING_INTERNVAL = 10
 
 # Media Types
-TYPE_TXT = 1
-TYPE_IMG = 2
-TYPE_VID = 3
-TYPE_UNKNOWN = 0
-
-TXT_EXTS = ['txt', 'md', 'rtf']
-IMG_EXTS = ['jpg', 'png', 'jpeg', 'bmp', 'heic', 'heif']
-VID_EXTS = ['mpeg']
-
+ContentTypeExts = {
+    ContentType.TEXT: ['txt', 'md', 'rtf'],
+    ContentType.IMAGE: ['jpg', 'png', 'jpeg', 'bmp', 'heic', 'heif'],
+    ContentType.GIF: [''],
+}
 README_REGEX_PATTERN = r'^(?i:readme).*'
 
 # Image Metadata
@@ -137,6 +151,8 @@ IMG_WIDTH_HALF = 240
 IMG_HEIGHT_HALF = 240
 IMG_RES_240SQ = 1
 IMG_RES_480SQ = 0
+
+GIF_FRAME_TIME = 1.0/12
 
 # Draw Text Options
 ALIGN_LEFT = 0
@@ -159,29 +175,19 @@ ERR_NOT_LOADED = -1
 BYTE_SIZE = 2**8
 # DUMMY_BUFFER_SIZE = 4
 # TOTAL_SPI_SEND_SIZE = 1024 + DUMMY_BUFFER_SIZE
-CHUNK_SIZE = 1020       # Maimum 1016 bytes (excluding 8 byte header for image)
+SPI_CHUNK_SIZE = 4096       # Maimum 1016 bytes (excluding 8 byte header for image)
 PING_INTERVAL = 5       # Interval for pinging screens, in seconds, default every 5 seconds
 WORK_SLEEP_TIME = 0.002  # 500Hz update frequency when running
 HYB_SLEEP_TIME = 0.2    # 5 Hz update frequency when in hybernation
 
-# Protocols
-PING_CMD = 1
-IMG_CMD = 3
-TXT_CMD = 31
-OPT_CMD = 63
-OPT_END = 64
-RES_CMD = 253
-HYB_CMD = 254
+class CommandType(IntEnum): 
+    # Protocols
+    PING_CMD = 1
+    IMG_CMD = 3
+    TXT_CMD = 31
+    OPT_CMD = 63
+    OPT_END = 64
+    RES_CMD = 253
+    HYB_CMD = 254
 
 COLOR_BABY_BLUE = (137, 207, 240)
-
-commands = {
-    PING_CMD: "ping",
-    TXT_CMD: "draw text",
-    IMG_CMD: "image header",
-    OPT_CMD: "draw options",
-    OPT_END: "options end",
-    RES_CMD: "restore",
-    HYB_CMD: "sleep"
-}
-

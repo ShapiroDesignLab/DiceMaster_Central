@@ -69,6 +69,7 @@ spi_config:
   max_speed_hz: 96000
   mode: 0  # SPI mode 0
   bits_per_word: 8
+  chunk_size: 4096
   
 imu_config:
   calibration_duration: 3.0

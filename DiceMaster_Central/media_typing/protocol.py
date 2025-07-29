@@ -4,7 +4,7 @@ Based on the protocol specification in docs/protocol.md
 """
 
 import struct
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, TYPE_CHECKING
 
 from abc import ABC, abstractmethod
 from DiceMaster_Central.config.constants import (
@@ -14,9 +14,38 @@ from DiceMaster_Central.config.constants import (
     ImageResolution
 )
 
+# Forward reference for type checking
+if TYPE_CHECKING:
+    from DiceMaster_Central.media_typing.media_types import TextEntry
+
 # Private constants for this module
 _SOF = 0x7E  # Start of Frame
 _HEADER_SIZE = 5  # Header is 5 bytes (SOF + Type + ID + Length)
+
+
+def encode_text_entry(text_entry: 'TextEntry') -> bytes:
+    """Encode a TextEntry object to bytes for protocol transmission"""
+    encoded = bytearray()
+    
+    # Encode coordinates (2 bytes each)
+    encoded.extend(struct.pack('>H', text_entry.x_cursor))
+    encoded.extend(struct.pack('>H', text_entry.y_cursor))
+    
+    # Encode font_id (1 byte)
+    encoded.append(text_entry.font_id)
+    
+    # Encode font_color (2 bytes)
+    encoded.extend(struct.pack('>H', text_entry.font_color))
+    
+    # Encode text length and content
+    text_bytes = text_entry.text.encode('utf-8')
+    if len(text_bytes) > 255:
+        raise ValueError(f"Text too long: {len(text_bytes)} bytes (max 255)")
+    
+    encoded.append(len(text_bytes))
+    encoded.extend(text_bytes)
+    
+    return bytes(encoded)
 
 
 class ProtocolMessage(ABC):
@@ -97,81 +126,104 @@ class ProtocolMessage(ABC):
                 self.payload == other.payload)
 
 class TextBatchMessage(ProtocolMessage):
-    """Text batch message with rotation support"""
+    """Text batch message with rotation support and per-line font colors"""
     
-    def __init__(self, bg_color: int = 0, font_color: int = 0xFFFF, 
-                 texts: Optional[List[Tuple[int, int, int, str]]] = None, 
+    def __init__(self, bg_color: int = 0, 
+                 texts = None,  # Can be TextEntry objects or tuples
                  rotation: Rotation = Rotation.ROTATION_0, msg_id: int = 0):
         super().__init__(MessageType.TEXT_BATCH, msg_id)
         self.bg_color = bg_color
-        self.font_color = font_color
-        self.texts = texts or []
         self.rotation = rotation
+        
+        # Handle both TextEntry objects and tuples for backward compatibility
+        if texts and hasattr(texts[0], 'to_tuple'):
+            # TextEntry objects - keep reference for direct encoding
+            self._text_entries = texts
+            self.texts = [entry.to_tuple() for entry in texts]  # For compatibility
+        else:
+            # Legacy tuple format
+            self._text_entries = None
+            self.texts = texts or []  # Format: (x, y, font_id, font_color, text)
+        
         self.encode()
     
     def _encode_payload(self):
-        """Encode the text batch payload"""
+        """Encode the text batch payload with per-line font colors"""
         payload = bytearray()
         
         # Text Group header
         payload.extend(struct.pack('>H', self.bg_color))  # BYTE 0-1: BG Color
-        payload.extend(struct.pack('>H', self.font_color))  # BYTE 2-3: Font Color
+        # Skip BYTE 2-3 as they're no longer used for global font color
+        payload.append(0)  # BYTE 2: Reserved
+        payload.append(0)  # BYTE 3: Reserved
         payload.append(len(self.texts))  # BYTE 4: number of lines
         payload.append(self.rotation)  # BYTE 5: rotation
         
-        # Individual text chunks
-        for x_cursor, y_cursor, font_id, text_string in self.texts:
-            text_bytes = text_string.encode('utf-8')
-            if len(text_bytes) > 255:
-                raise ValueError("Text string too long (max 255 bytes)")
+        # Use TextEntry encoding if available, otherwise use tuple encoding
+        if self._text_entries:
+            for entry in self._text_entries:
+                payload.extend(encode_text_entry(entry))
+        else:
+            # Legacy tuple encoding
+            for x_cursor, y_cursor, font_id, font_color, text_string in self.texts:
+                text_bytes = text_string.encode('utf-8')
+                if len(text_bytes) > 255:
+                    raise ValueError(f"Text string too long (max 255 bytes): '{text_string[:50]}...'")
+                
+                # BYTE 0-1: x cursor (16-bit big endian)
+                payload.extend(struct.pack('>H', x_cursor))
+                # BYTE 2-3: y cursor (16-bit big endian)  
+                payload.extend(struct.pack('>H', y_cursor))
+                # BYTE 4: font id
+                payload.append(font_id)
+                # BYTE 5-6: font color (16-bit big endian)
+                payload.extend(struct.pack('>H', font_color))
+                # BYTE 7: text length
+                payload.append(len(text_bytes))
+                # PAYLOAD STRING
+                payload.extend(text_bytes)
             
-            payload.extend(struct.pack('>H', x_cursor))  # BYTE 0-1: x cursor
-            payload.extend(struct.pack('>H', y_cursor))  # BYTE 2-3: y cursor
-            payload.append(font_id)  # BYTE 4: font id
-            payload.append(len(text_bytes))  # BYTE 5: text length
-            payload.extend(text_bytes)  # PAYLOAD STRING
         return payload
     
     @classmethod
     def _decode_payload(cls, payload: bytearray) -> "TextBatchMessage":
-        """Decode text batch payload"""
+        """Decode the text batch payload with per-line font colors"""
         if len(payload) < 6:
-            raise ValueError("Insufficient payload for text batch")
+            raise ValueError("Payload too short for text batch message")
         
-        # Decode text group header
+        # Parse header
         bg_color = struct.unpack('>H', payload[0:2])[0]
-        font_color = struct.unpack('>H', payload[2:4])[0]
-        num_texts = payload[4]
+        # Skip bytes 2-3 (reserved)
+        num_lines = payload[4]
         rotation = Rotation(payload[5])
         
-        # Decode individual text chunks
+        # Parse individual text chunks
         texts = []
         offset = 6
         
-        for _ in range(num_texts):
-            if offset + 6 > len(payload):
-                raise ValueError("Insufficient payload for text chunk")
+        for _ in range(num_lines):
+            if offset + 8 > len(payload):
+                raise ValueError("Payload too short for text chunk header")
             
+            # Parse text chunk header
             x_cursor = struct.unpack('>H', payload[offset:offset+2])[0]
             y_cursor = struct.unpack('>H', payload[offset+2:offset+4])[0]
             font_id = payload[offset+4]
-            text_len = payload[offset+5]
-            offset += 6
+            font_color = struct.unpack('>H', payload[offset+5:offset+7])[0]
+            text_length = payload[offset+7]
             
-            if offset + text_len > len(payload):
-                raise ValueError("Insufficient payload for text string")
+            offset += 8
             
-            text_string = payload[offset:offset+text_len].decode('utf-8')
-            offset += text_len
+            if offset + text_length > len(payload):
+                raise ValueError("Payload too short for text string")
             
-            texts.append((x_cursor, y_cursor, font_id, text_string))
-
-        return cls(
-            bg_color=bg_color,
-            font_color=font_color,
-            texts=texts,
-            rotation=rotation
-        )
+            # Parse text string
+            text_string = payload[offset:offset+text_length].decode('utf-8')
+            offset += text_length
+            
+            texts.append((x_cursor, y_cursor, font_id, font_color, text_string))
+        
+        return cls(bg_color=bg_color, texts=texts, rotation=rotation)
 
     def __eq__(self, other) -> bool:
         """Check equality based on content"""
@@ -180,7 +232,6 @@ class TextBatchMessage(ProtocolMessage):
         return (
             super().__eq__(other) and 
             self.bg_color == other.bg_color and
-            self.font_color == other.font_color and
             self.texts == other.texts and
             self.rotation == other.rotation
         )
