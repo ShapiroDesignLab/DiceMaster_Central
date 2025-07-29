@@ -45,6 +45,15 @@ class ImageResolution(IntEnum):
     RES_320x240 = 2
     RES_640x480 = 3
 
+
+class FontID(IntEnum):
+    NOTEXT=0,
+    TF = 1,
+    ARABIC=2,
+    CHINESE=3,
+    CYRILLIC=4,
+    DEVANAGARI=5
+
 ##########################
 # 
 # BUS Macros

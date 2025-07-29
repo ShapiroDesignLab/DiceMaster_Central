@@ -46,7 +46,7 @@ def test_imu_reading(duration=30, sample_rate=50, use_filtered=False, compare_bo
         
         # Calibrate filtered IMU
         print("\nStarting calibration for filtered IMU...")
-        imu_filtered.start_calibration(duration=3.0)
+        imu_filtered.start_calibration(duration=10.0)
         
         # Wait for calibration to complete
         print("Calibration in progress...")

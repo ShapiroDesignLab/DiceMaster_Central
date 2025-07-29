@@ -3,8 +3,22 @@ import os
 from abc import ABC, abstractmethod
 from typing import List, Optional, Any, Union, Tuple
 from pydantic import BaseModel, Field, validator, root_validator
-from DiceMaster_Central.config.constants import ImageFormat, ImageResolution, Rotation
 
+from DiceMaster_Central.config.constants import (
+    ImageFormat,
+    ImageResolution,
+    Rotation,
+    FontID
+)
+
+from DiceMaster_Central.media_typing.protocol import (
+    TextBatchMessage,
+    ImageStartMessage,
+    ImageChunkMessage,
+    ImageEndMessage,
+    BacklightOnMessage,
+    BacklightOffMessage,
+)
 
 class Media(BaseModel, ABC):
     """Base class for all media types"""
@@ -20,7 +34,7 @@ class Media(BaseModel, ABC):
         self.content = self._load_content()
     
     @abstractmethod
-    def _load_content(self):
+    def to_msg(self):
         """Load the content of the media file."""
         pass
 
@@ -35,44 +49,51 @@ class TextGroup(Media):
     
     @validator('file_path')
     def validate_json_file(cls, v):
+        """Validate json"""
         if not v.endswith(".json"):
             raise ValueError("TextGroup file must be a .json file")
         return v
     
     @validator('texts')
     def validate_text_strings(cls, v):
+        """Validate text string about cursor location, font type, and length"""
         """Validate that text strings don't exceed 255 bytes when UTF-8 encoded"""
         for x, y, font_id, text in v:
-            text_bytes = text.encode('utf-8')
-            if len(text_bytes) > 255:
-                raise ValueError(f"Text string too long (max 255 bytes): '{text[:50]}...'")
+            if not 0 <= x < 480 or not 0 <= y < 480:
+                raise ValueError(f"Text Cursor location ({x}, {y}) not allowed!")
+            try:
+                font = FontID(font_id)
+            except:
+                raise ValueError(f"Font {font_id} not available!")
+            else:
+                text_bytes = text.encode('utf-8')
+                if len(text_bytes) > 255:
+                    raise ValueError(f"Text string too long (max 255 bytes): '{text[:50]}...'")
         return v
     
-    def _load_content(self):
+    def to_msg(self) -> Text:
         with open(self.file_path, 'r', encoding='utf-8') as f:
             payload = json.load(f)
-            
-            # Load protocol-required fields from JSON
-            self.bg_color = payload.get('bg_color', 0x0000)
-            self.font_color = payload.get('font_color', 0xFFFF)
-            
-            # Load text entries - expect array of objects with x, y, font_id, text
-            texts_data = payload.get('texts', [])
-            self.texts = []
-            
-            for text_entry in texts_data:
-                if isinstance(text_entry, dict):
-                    x = text_entry.get('x', 0)
-                    y = text_entry.get('y', 0) 
-                    font_id = text_entry.get('font_id', 0)
-                    text = text_entry.get('text', '')
-                    self.texts.append((x, y, font_id, text))
-                elif isinstance(text_entry, (list, tuple)) and len(text_entry) >= 4:
-                    self.texts.append(tuple(text_entry[:4]))
-                else:
-                    raise ValueError(f"Invalid text entry format: {text_entry}")
-            
-            return payload
+        
+        # Load protocol-required fields from JSON
+        self.bg_color = payload.get('bg_color', 0x0000)
+        self.font_color = payload.get('font_color', 0xFFFF)
+        
+        # Load text entries - expect array of objects with x, y, font_id, text
+        texts_data = payload.get('texts', [])
+        self.texts = []
+        
+        for text_entry in texts_data:
+            try:
+                x = text_entry.get('x', 0)
+                y = text_entry.get('y', 0) 
+                font_id = text_entry.get('font_id', 0)
+                text = text_entry.get('text', '')
+                self.texts.append((x, y, font_id, text))
+            except:
+                print("Failed to create textgroup msg!")
+        
+
 
 class OptionGroup(TextGroup):
     """Virtual text group with predefined content"""
