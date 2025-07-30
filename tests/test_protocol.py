@@ -67,8 +67,8 @@ def test_image_start_message():
     # Test with maximum values
     original = ImageStartMessage(
         image_id=255,
-        image_format=ImageFormat.BMP,
-        resolution=ImageResolution.RES_640x480,
+        image_format=ImageFormat.JPEG,
+        resolution=ImageResolution.SQ480,
         delay_time=255,
         total_size=16777215,  # Maximum 24-bit value
         num_chunks=255,
@@ -100,8 +100,8 @@ def test_image_start_message():
     # Test that different messages are not equal
     different_msg = ImageStartMessage(
         image_id=128,  # Different ID
-        image_format=ImageFormat.BMP,
-        resolution=ImageResolution.RES_640x480,
+        image_format=ImageFormat.RGB565,
+        resolution=ImageResolution.SQ240,
         delay_time=255,
         total_size=16777215,
         num_chunks=255,
@@ -442,10 +442,10 @@ def test_equality_system():
     assert msg1 != None, "ProtocolMessage should not equal None"
     
     # Test ImageStartMessage equality
-    img1 = ImageStartMessage(1, ImageFormat.BMP, ImageResolution.RES_240x240, 100, 1024, 4, Rotation.ROTATION_0, 1)
-    img2 = ImageStartMessage(1, ImageFormat.BMP, ImageResolution.RES_240x240, 100, 1024, 4, Rotation.ROTATION_0, 1)
-    img3 = ImageStartMessage(2, ImageFormat.BMP, ImageResolution.RES_240x240, 100, 1024, 4, Rotation.ROTATION_0, 1)  # Different image_id
-    
+    img1 = ImageStartMessage(1, ImageFormat.JPEG, ImageResolution.SQ240, 100, 1024, 4, Rotation.ROTATION_0, 1)
+    img2 = ImageStartMessage(1, ImageFormat.JPEG, ImageResolution.SQ240, 100, 1024, 4, Rotation.ROTATION_0, 1)
+    img3 = ImageStartMessage(2, ImageFormat.JPEG, ImageResolution.SQ240, 100, 1024, 4, Rotation.ROTATION_0, 1)  # Different image_id
+
     assert img1 == img2, "Identical ImageStartMessages should be equal"
     assert img1 != img3, "ImageStartMessages with different image_id should not be equal"
     

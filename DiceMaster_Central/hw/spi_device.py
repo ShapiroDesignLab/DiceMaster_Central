@@ -52,10 +52,14 @@ class SPIDevice:
         """See if bus is awake,  usually unnecessary"""
         return self.awake
 
-    def send(self, msg):
+    def send(self, msg, held=False):
         """send and return received content"""
         assert self.awake
         if self.verbose:
             print(f"Written {len(msg)}")
             print(f"Sent {[hex(byte) for byte in msg]}")
-        self.spi.writebytes(msg)           # Send the chunk
+        # self.spi.writebytes(msg)           # Send the chunk
+        if not held:
+            self.spi.xfer(msg)
+        else:
+            self.spi.xfer2(msg)

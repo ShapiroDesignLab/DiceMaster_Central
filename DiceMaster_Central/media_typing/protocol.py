@@ -4,7 +4,7 @@ Based on the protocol specification in docs/protocol.md
 """
 
 import struct
-from typing import List, Tuple, Optional, TYPE_CHECKING
+from typing import Tuple, TYPE_CHECKING
 
 from abc import ABC, abstractmethod
 from DiceMaster_Central.config.constants import (
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 # Private constants for this module
 _SOF = 0x7E  # Start of Frame
 _HEADER_SIZE = 5  # Header is 5 bytes (SOF + Type + ID + Length)
+_DMA_PADDING = 4  # DMA buffer padding bytes
+_DMA_ALIGNMENT = 4  # DMA buffer alignment requirement (multiples of 4)
 
 
 def encode_text_entry(text_entry: 'TextEntry') -> bytes:
@@ -48,6 +50,50 @@ def encode_text_entry(text_entry: 'TextEntry') -> bytes:
     return bytes(encoded)
 
 
+def calculate_effective_chunk_size(spi_chunk_size: int) -> int:
+    """
+    Calculate the effective chunk size for image data considering SPI DMA restrictions.
+    
+    Args:
+        spi_chunk_size: The configured SPI chunk size (e.g., 1024 bytes)
+        
+    Returns:
+        The effective chunk size for image data payload
+        
+    The total message structure is:
+    - Header: 5 bytes (SOF + Type + ID + Length)
+    - Image chunk payload header: 7 bytes (image_id + chunk_id + start_location + chunk_len)
+    - Image data: variable
+    - DMA padding: 4 bytes
+    
+    Total message must be aligned to 4 bytes for DMA compatibility.
+    """
+    # Calculate overhead: header + chunk payload header + DMA padding
+    overhead = _HEADER_SIZE + 7 + _DMA_PADDING  # 5 + 7 + 4 = 16 bytes
+    
+    # Available space for image data
+    available_space = spi_chunk_size - overhead
+    
+    # Ensure the total message length is aligned to 4 bytes
+    # Since overhead is already 16 bytes (multiple of 4), we need to ensure
+    # the image data size keeps the total aligned
+    effective_chunk_size = (available_space // _DMA_ALIGNMENT) * _DMA_ALIGNMENT
+    
+    # Ensure we have at least some space for data
+    if effective_chunk_size <= 0:
+        raise ValueError(f"SPI chunk size ({spi_chunk_size}) too small for headers and alignment")
+    
+    return effective_chunk_size
+
+
+def pad_to_alignment(data: bytearray, alignment: int = _DMA_ALIGNMENT) -> bytearray:
+    """Pad data to the specified alignment boundary"""
+    padding_needed = (alignment - (len(data) % alignment)) % alignment
+    if padding_needed > 0:
+        data.extend(b'\x00' * padding_needed)
+    return data
+
+
 class ProtocolMessage(ABC):
     """Base class for all protocol messages"""
     
@@ -70,11 +116,18 @@ class ProtocolMessage(ABC):
         
         # Payload starts at BYTE 5 onwards
         message.extend(payload)
+        
+        # Pad to DMA alignment before adding DMA padding
+        pad_to_alignment(message, _DMA_ALIGNMENT)
+        
+        # Finally, add 4 bytes at the end to deal with DMA buffer error
+        message.extend(b'\x00\x00\x00\x00')
         self.payload = message  # Store complete message in payload
 
     @abstractmethod
     def _encode_payload(self) -> bytearray:
-        pass
+        """Encode the payload and return a bytearray"""
+        return bytearray()
 
     def encode(self) -> None:
         """Encode the message with header and payload"""
@@ -96,18 +149,18 @@ class ProtocolMessage(ABC):
     
     @classmethod
     @abstractmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> 'ProtocolMessage':
         """Decode the payload and return a new message instance"""
-        pass
+        raise NotImplementedError("Subclasses must implement _decode_payload")
 
     @classmethod
-    def decode(cls, payload: bytearray):
+    def decode(cls, payload: bytearray) -> 'ProtocolMessage':
         """Decode API"""
         if len(payload) < _HEADER_SIZE:
             raise ValueError("Insufficient payload for decoding")
         
         # Extract header information
-        msg_type, msg_id, payload_len, payload_start = cls.decode_header(payload)
+        _, msg_id, _, _ = cls.decode_header(payload)
         # Extract content payload
         content_payload = payload[_HEADER_SIZE:]
         # Create instance using class method
@@ -262,21 +315,22 @@ class ImageStartMessage(ProtocolMessage):
         format_res_byte = (self.image_format << 4) | self.resolution
         payload.append(format_res_byte)
         
-        payload.append(self.delay_time)  # BYTE 2: Delay Time (0-255 ms)
+        # BYTE 2-3: Delay Time (0-65535 ms) - 16-bit big endian
+        payload.extend(struct.pack('>H', self.delay_time))
         
-        # BYTE 3-5: total image size (24-bit big endian)
+        # BYTE 4-6: total image size (24-bit big endian)
         payload.append((self.total_size >> 16) & 0xFF)
         payload.append((self.total_size >> 8) & 0xFF)
         payload.append(self.total_size & 0xFF)
         
-        payload.append(self.num_chunks)  # BYTE 6: num chunks
-        payload.append(self.rotation)  # BYTE 7: rotation
+        payload.append(self.num_chunks)  # BYTE 7: num chunks
+        payload.append(self.rotation)  # BYTE 8: rotation
         return payload
     
     @classmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> "ImageStartMessage":
         """Decode image start payload"""
-        if len(payload) < 8:
+        if len(payload) < 9:  # Updated minimum length for 2-byte delay_time
             raise ValueError("Insufficient payload for image start")
         
         image_id = payload[0]
@@ -285,13 +339,14 @@ class ImageStartMessage(ProtocolMessage):
         image_format = ImageFormat((format_res_byte >> 4) & 0x0F)
         resolution = ImageResolution(format_res_byte & 0x0F)
         
-        delay_time = payload[2]
+        # BYTE 2-3: Delay Time (16-bit big endian)
+        delay_time = struct.unpack('>H', payload[2:4])[0]
         
-        # Decode 24-bit total size
-        total_size = (payload[3] << 16) | (payload[4] << 8) | payload[5]
+        # BYTE 4-6: Decode 24-bit total size 
+        total_size = (payload[4] << 16) | (payload[5] << 8) | payload[6]
         
-        num_chunks = payload[6]
-        rotation = Rotation(payload[7])
+        num_chunks = payload[7]  # BYTE 7: num chunks
+        rotation = Rotation(payload[8])  # BYTE 8: rotation
         
         return cls(
             image_id=image_id,
@@ -320,7 +375,7 @@ class ImageStartMessage(ProtocolMessage):
 
 
 class ImageChunkMessage(ProtocolMessage):
-    """Image chunk message"""
+    """Image chunk message with DMA-aware chunk sizing"""
     
     def __init__(self, image_id: int, chunk_id: int, start_location: int, 
                  chunk_data: bytes, msg_id: int = 0):
@@ -329,13 +384,26 @@ class ImageChunkMessage(ProtocolMessage):
         self.chunk_id = chunk_id
         self.start_location = start_location
         self.chunk_data = chunk_data
+        
+        # Validate chunk size against effective limits
+        max_chunk_size = self.get_max_chunk_size()
+        if len(chunk_data) > max_chunk_size:
+            raise ValueError(f"Chunk data too large: {len(chunk_data)} bytes (max {max_chunk_size} bytes)")
+        
         self.encode()
+    
+    @staticmethod
+    def get_max_chunk_size(spi_chunk_size: int | None = None) -> int:
+        """Get the maximum chunk size for image data based on SPI configuration"""
+        if spi_chunk_size is None:
+            # Import here to avoid circular dependency
+            from DiceMaster_Central.config.constants import SPI_CHUNK_SIZE
+            spi_chunk_size = SPI_CHUNK_SIZE
+        
+        return calculate_effective_chunk_size(spi_chunk_size)
     
     def _encode_payload(self):
         """Encode the image chunk payload"""
-        if len(self.chunk_data) > 65535:
-            raise ValueError("Chunk data too large (max 65535 bytes)")
-        
         payload = bytearray()
         
         payload.append(self.image_id)  # BYTE 0: image ID
@@ -355,7 +423,7 @@ class ImageChunkMessage(ProtocolMessage):
         return payload
     
     @classmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> "ImageChunkMessage":
         """Decode image chunk payload"""
         if len(payload) < 7:
             raise ValueError("Insufficient payload for image chunk")
@@ -409,7 +477,7 @@ class ImageEndMessage(ProtocolMessage):
         return payload
     
     @classmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> "ImageEndMessage":
         """Decode image end payload"""
         if len(payload) < 1:
             raise ValueError("Insufficient payload for image end")
@@ -440,7 +508,7 @@ class BacklightOnMessage(ProtocolMessage):
         return bytearray()  # Empty payload
     
     @classmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> "BacklightOnMessage":
         """Decode backlight on payload (no payload expected)"""
         if len(payload) != 0:
             raise ValueError("Backlight on message should have no payload")
@@ -466,7 +534,7 @@ class BacklightOffMessage(ProtocolMessage):
         return bytearray()  # Empty payload
     
     @classmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> "BacklightOffMessage":
         """Decode backlight off payload (no payload expected)"""
         if len(payload) != 0:
             raise ValueError("Backlight off message should have no payload")
@@ -492,7 +560,7 @@ class PingRequestMessage(ProtocolMessage):
         return bytearray()  # Empty payload
     
     @classmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> "PingRequestMessage":
         """Decode ping request payload (no payload expected)"""
         if len(payload) != 0:
             raise ValueError("Ping request message should have no payload")
@@ -529,7 +597,7 @@ class PingResponseMessage(ProtocolMessage):
         return payload
     
     @classmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> "PingResponseMessage":
         """Decode ping response payload"""
         if len(payload) < 2:
             raise ValueError("Insufficient payload for ping response")
@@ -570,7 +638,7 @@ class AckMessage(ProtocolMessage):
         return payload
     
     @classmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> "AckMessage":
         """Decode acknowledgment payload"""
         if len(payload) < 1:
             raise ValueError("Insufficient payload for acknowledgment")
@@ -606,7 +674,7 @@ class ErrorMessage(ProtocolMessage):
         return payload
     
     @classmethod
-    def _decode_payload(cls, payload: bytearray):
+    def _decode_payload(cls, payload: bytearray) -> "ErrorMessage":
         """Decode error message payload"""
         if len(payload) < 2:
             raise ValueError("Insufficient payload for error message")
@@ -640,3 +708,22 @@ MESSAGE_CLASSES = {
     MessageType.ACKNOWLEDGMENT: AckMessage,
     MessageType.ERROR_MESSAGE: ErrorMessage,
 }
+
+# Export utility functions
+__all__ = [
+    'ProtocolMessage',
+    'TextBatchMessage', 
+    'ImageStartMessage',
+    'ImageChunkMessage',
+    'ImageEndMessage',
+    'BacklightOnMessage',
+    'BacklightOffMessage', 
+    'PingRequestMessage',
+    'PingResponseMessage',
+    'AckMessage',
+    'ErrorMessage',
+    'MESSAGE_CLASSES',
+    'encode_text_entry',
+    'calculate_effective_chunk_size',
+    'pad_to_alignment'
+]

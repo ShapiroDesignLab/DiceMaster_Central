@@ -40,18 +40,13 @@ class Rotation(IntEnum):
 
 class ImageFormat(IntEnum):
     """Image format values (4-bit)"""
-    JPEG = 0
-    PNG = 1
-    BMP = 2
-    RAW = 3
+    JPEG = 1
+    RGB565 = 2
 
 class ImageResolution(IntEnum):
     """Image resolution values (4-bit)"""
-    RES_240x240 = 0
-    RES_480x480 = 1
-    RES_320x240 = 2
-    RES_640x480 = 3
-
+    SQ480 = 1
+    SQ240 = 2
 
 class FontID(IntEnum):
     NOTEXT=0
@@ -149,8 +144,6 @@ IMG_WIDTH_FULL = 480
 IMG_HEIGHT_FULL = 480
 IMG_WIDTH_HALF = 240
 IMG_HEIGHT_HALF = 240
-IMG_RES_240SQ = 1
-IMG_RES_480SQ = 0
 
 GIF_FRAME_TIME = 1.0/12
 
@@ -175,12 +168,12 @@ ERR_NOT_LOADED = -1
 BYTE_SIZE = 2**8
 # DUMMY_BUFFER_SIZE = 4
 # TOTAL_SPI_SEND_SIZE = 1024 + DUMMY_BUFFER_SIZE
-SPI_CHUNK_SIZE = 4096       # Maimum 1016 bytes (excluding 8 byte header for image)
+SPI_CHUNK_SIZE = 1024       # Maimum 1016 bytes (excluding 8 byte header for image)
 PING_INTERVAL = 5       # Interval for pinging screens, in seconds, default every 5 seconds
 WORK_SLEEP_TIME = 0.002  # 500Hz update frequency when running
 HYB_SLEEP_TIME = 0.2    # 5 Hz update frequency when in hybernation
 
-class CommandType(IntEnum): 
+class CommandType(IntEnum):
     # Protocols
     PING_CMD = 1
     IMG_CMD = 3

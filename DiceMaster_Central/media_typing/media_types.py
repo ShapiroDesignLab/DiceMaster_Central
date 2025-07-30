@@ -8,7 +8,8 @@ from DiceMaster_Central.config.constants import (
     ImageFormat,
     ImageResolution,
     Rotation,
-    FontID
+    FontID,
+    SPI_CHUNK_SIZE
 )
 
 from DiceMaster_Central.media_typing.protocol import (
@@ -164,8 +165,8 @@ class Image(Media):
     # Protocol fields for IMAGE_TRANSFER_START message
     image_id: int = Field(default=0, description="Image ID (0-255)")
     image_format: ImageFormat = Field(default=ImageFormat.JPEG, description="Image format")
-    resolution: ImageResolution = Field(default=ImageResolution.RES_480x480, description="Image resolution")
-    delay_time: int = Field(default=0, description="Delay time in ms (0-255)")
+    resolution: ImageResolution = Field(default=ImageResolution.SQ480, description="Image resolution")
+    delay_time: int = Field(default=0, description="Delay time in ms (0-65535)")
     total_size: int = Field(default=0, description="Total image size in bytes")
     num_chunks: int = Field(default=0, description="Number of chunks for transfer")
     
@@ -180,8 +181,8 @@ class Image(Media):
     
     @validator('delay_time')
     def validate_delay_time(cls, v):
-        if not 0 <= v <= 255:
-            raise ValueError("Delay time must be between 0 and 255 ms")
+        if not 0 <= v <= 65535:  # Updated for 16-bit range
+            raise ValueError("Delay time must be between 0 and 65535 ms")
         return v
     
     @validator('total_size')
@@ -206,7 +207,15 @@ class Image(Media):
         
         # Set protocol fields based on file content
         self.total_size = len(content)
-        self.num_chunks = self._calculate_chunks(len(content))
+        
+        # Calculate num_chunks using effective chunk size to account for DMA restrictions
+        try:
+            from .protocol import calculate_effective_chunk_size
+            effective_chunk_size = calculate_effective_chunk_size(SPI_CHUNK_SIZE)
+            self.num_chunks = self._calculate_chunks(len(content), effective_chunk_size)
+        except ImportError:
+            # Fallback to original calculation if protocol module not available
+            self.num_chunks = self._calculate_chunks(len(content))
         
         return content
 
@@ -218,8 +227,7 @@ class Image(Media):
         # Map PIL format to protocol format
         format_mapping = {
             'JPEG': ImageFormat.JPEG,
-            'PNG': ImageFormat.PNG,
-            'BMP': ImageFormat.BMP
+            'BMP': ImageFormat.RGB565,
         }
         
         self.image_format = format_mapping.get(img.format, ImageFormat.JPEG)
@@ -227,30 +235,34 @@ class Image(Media):
         
         # Validate and set resolution based on dimensions
         if self.dimensions == (480, 480):
-            self.resolution = ImageResolution.RES_480x480
+            self.resolution = ImageResolution.SQ480
         elif self.dimensions == (240, 240):
-            self.resolution = ImageResolution.RES_240x240
-        elif self.dimensions == (320, 240):
-            self.resolution = ImageResolution.RES_320x240
-        elif self.dimensions == (640, 480):
-            self.resolution = ImageResolution.RES_640x480
+            self.resolution = ImageResolution.SQ240
         else:
             raise ValueError(f"Unsupported image dimensions: {self.dimensions}. "
                            f"Must be 480x480, 240x240, 320x240, or 640x480")
     
-    def _calculate_chunks(self, total_size: int, chunk_size: int = 2048) -> int:
+    def _calculate_chunks(self, total_size: int, chunk_size: int = SPI_CHUNK_SIZE) -> int:
         """Calculate number of chunks needed for transfer"""
         return (total_size + chunk_size - 1) // chunk_size  # Ceiling division
     
     def to_msg(self, **kwargs) -> List[Union[ImageStartMessage, ImageChunkMessage, ImageEndMessage]]:
-        """Generate all protocol messages for image transfer"""
+        """Generate all protocol messages for image transfer with DMA-aware chunking"""
+        from .protocol import calculate_effective_chunk_size
+        
         rotation = kwargs.get('rotation', Rotation.ROTATION_0)
-        chunk_size = kwargs.get('chunk_size', 2048)
+        spi_chunk_size = kwargs.get('chunk_size', SPI_CHUNK_SIZE)
+        
+        # Calculate effective chunk size considering DMA restrictions
+        effective_chunk_size = calculate_effective_chunk_size(spi_chunk_size)
         
         if not self.content:
             raise ValueError("Image content not loaded")
             
         messages = []
+        
+        # Recalculate number of chunks with effective chunk size
+        effective_num_chunks = self._calculate_chunks(self.total_size, effective_chunk_size)
         
         # Create start message
         start_message = ImageStartMessage(
@@ -259,17 +271,17 @@ class Image(Media):
             resolution=self.resolution,
             delay_time=self.delay_time,
             total_size=self.total_size,
-            num_chunks=self.num_chunks,
+            num_chunks=effective_num_chunks,
             rotation=rotation
         )
         messages.append(start_message)
         
-        # Create chunk messages
+        # Create chunk messages using effective chunk size
         chunk_id = 0
         start_location = 0
         
-        for i in range(0, len(self.content), chunk_size):
-            chunk_data = self.content[i:i + chunk_size]
+        for i in range(0, len(self.content), effective_chunk_size):
+            chunk_data = self.content[i:i + effective_chunk_size]
             
             chunk_message = ImageChunkMessage(
                 image_id=self.image_id,
@@ -296,8 +308,8 @@ class GIF(Media):
     # Protocol fields - similar to Image but for multiple frames
     image_id: int = Field(default=0, description="Starting image ID for sequence")
     image_format: ImageFormat = Field(default=ImageFormat.JPEG, description="Format of frame images")
-    resolution: ImageResolution = Field(default=ImageResolution.RES_480x480, description="Resolution of frames")
-    delay_time: int = Field(default=100, description="Frame delay in ms (0-255)")
+    resolution: ImageResolution = Field(default=ImageResolution.SQ480, description="Resolution of frames")
+    delay_time: int = Field(default=100, description="Frame delay in ms (0-65535)")
     
     # Motion picture specific fields
     frames_data: List[bytes] = Field(default_factory=list, description="Frame image data")
@@ -318,8 +330,8 @@ class GIF(Media):
     
     @validator('delay_time')
     def validate_delay_time(cls, v):
-        if not 0 <= v <= 255:
-            raise ValueError("Delay time must be between 0 and 255 ms")
+        if not 0 <= v <= 65535:  # Updated for 16-bit range
+            raise ValueError("Delay time must be between 0 and 65535 ms")
         return v
 
     def _load_content(self):
@@ -379,16 +391,12 @@ class GIF(Media):
             # Validate and set resolution
             dimensions = img.size
             if dimensions == (480, 480):
-                self.resolution = ImageResolution.RES_480x480
+                self.resolution = ImageResolution.SQ480
             elif dimensions == (240, 240):
-                self.resolution = ImageResolution.RES_240x240
-            elif dimensions == (320, 240):
-                self.resolution = ImageResolution.RES_320x240
-            elif dimensions == (640, 480):
-                self.resolution = ImageResolution.RES_640x480
+                self.resolution = ImageResolution.SQ240
             else:
                 raise ValueError(f"Unsupported frame dimensions: {dimensions}. "
-                               f"Must be 480x480, 240x240, 320x240, or 640x480")
+                               f"Must be 480x480, 240x240")
         finally:
             os.unlink(temp_path)
     
@@ -398,24 +406,29 @@ class GIF(Media):
             yield frame
     
     def get_frame_metadata(self, frame_index: int) -> dict:
-        """Get protocol metadata for a specific frame"""
+        """Get protocol metadata for a specific frame with DMA-aware chunking"""
+        from .protocol import calculate_effective_chunk_size
+        
         if not 0 <= frame_index < len(self.frames_data):
             raise IndexError(f"Frame index {frame_index} out of range")
         
         frame_data = self.frames_data[frame_index]
+        # Use DMA-aware effective chunk size
+        effective_chunk_size = calculate_effective_chunk_size(2048)  # Default 2KB SPI chunks
+        
         return {
             'image_id': self.image_id + frame_index,
             'image_format': self.image_format,
             'resolution': self.resolution,
             'delay_time': self.delay_time,
             'total_size': len(frame_data),
-            'num_chunks': (len(frame_data) + 2047) // 2048  # Ceiling division for 2KB chunks
+            'num_chunks': (len(frame_data) + effective_chunk_size - 1) // effective_chunk_size  # Ceiling division
         }
     
     def to_msg(self, **kwargs) -> List[List[Union[ImageStartMessage, ImageChunkMessage, ImageEndMessage]]]:
-        """Return a list of Image.to_msg() lists for each frame"""
+        """Return a list of Image.to_msg() lists for each frame with DMA-aware chunking"""
         rotation = kwargs.get('rotation', Rotation.ROTATION_0)
-        chunk_size = kwargs.get('chunk_size', 2048)
+        spi_chunk_size = kwargs.get('chunk_size', 2048)
         
         if not self.frames_data:
             raise ValueError("No frames loaded")
@@ -438,8 +451,8 @@ class GIF(Media):
                     delay_time=self.delay_time
                 )
                 
-                # Get the protocol messages for this frame
-                messages = frame_image.to_msg(rotation=rotation, chunk_size=chunk_size)
+                # Get the protocol messages for this frame - effective chunk size is calculated inside to_msg
+                messages = frame_image.to_msg(rotation=rotation, chunk_size=spi_chunk_size)
                 frame_messages.append(messages)
                 
             finally:
