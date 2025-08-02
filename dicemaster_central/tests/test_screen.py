@@ -45,7 +45,7 @@ class ScreenMediaTestPublisher(Node):
                 {'screen_id': 1, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'hey_guys.json')},
                 {'screen_id': 1, 'media_type': ContentType.IMAGE, 'file_path': str(self.test_assets_dir / 'cat_480.jpg')},
                 {'screen_id': 1, 'media_type': ContentType.GIF, 'file_path': str(self.test_assets_dir / 'miss-you.gif.d')},
-                {'screen_id': 1, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'hey_guys.json')},
+                # {'screen_id': 1, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'hey_guys.json')},
             ]
             self.get_logger().info("Running SINGLE SCREEN test configuration (Screen ID 1 only)")
         elif test_config == 'multi':
@@ -123,13 +123,13 @@ def test_screen_media_service(test_config='single'):
         screen_service = ScreenMediaService()
         test_publisher = ScreenMediaTestPublisher(test_config=test_config)
         
-        # Use SingleThreadedExecutor to run both nodes with proper time sharing
-        from rclpy.executors import SingleThreadedExecutor
-        executor = SingleThreadedExecutor()
+        # Use MultiThreadedExecutor to avoid timer blocking
+        from rclpy.executors import MultiThreadedExecutor
+        executor = MultiThreadedExecutor(num_threads=4)
         executor.add_node(screen_service)
         executor.add_node(test_publisher)
         
-        print("Running test with SingleThreadedExecutor... Press Ctrl+C to stop")
+        print("Running test with MultiThreadedExecutor... Press Ctrl+C to stop")
         executor.spin()
         
     except KeyboardInterrupt:

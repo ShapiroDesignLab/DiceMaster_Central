@@ -8,6 +8,7 @@ Daniel Hou @2024
 
 import threading
 import time
+from time import perf_counter
 from queue import Empty, PriorityQueue
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
@@ -133,6 +134,9 @@ class ScreenBusManager:
                 # Get next message with timeout
                 queued_msg = self.message_queue.get(timeout=1.0)
                 
+                # Start timing the transmission work
+                st = perf_counter()
+                
                 # Transmit the message
                 success = self._transmit_message(queued_msg)
                 
@@ -147,6 +151,8 @@ class ScreenBusManager:
                 
                 # Small delay to prevent overwhelming the bus
                 time.sleep(0.001)
+
+                self.node.get_logger().info(f"Last run took {(perf_counter() - st):.4f}s")
                 
             except Empty:
                 # No messages to process

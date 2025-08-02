@@ -189,6 +189,9 @@ class Screen:
     def _process_text_request(self, request: ScreenMediaCmd) -> bool:
         """Process text request using TextGroup from JSON file"""
         try:
+            # Stop any active GIF playback
+            self.destroy_gif_replay()
+            
             # Use TextGroup to load and validate JSON configuration
             text_group = TextGroup(file_path=request.file_path)
             text_message = text_group.to_msg(rotation=self.current_rotation)
@@ -209,6 +212,9 @@ class Screen:
     def _process_image_request(self, request: ScreenMediaCmd) -> bool:
         """Process image request using Image media type"""
         try:
+            # Stop any active GIF playback
+            self.destroy_gif_replay()
+            
             # Use Image class to load and validate image
             image = MediaImage(file_path=request.file_path)
             messages = image.to_msg(rotation=self.current_rotation, chunk_size=SPI_CHUNK_SIZE)
@@ -284,6 +290,17 @@ class Screen:
 
     def _gif_frame_callback(self):
         """Timer callback for GIF frame playback"""
+        from time import perf_counter
+        
+        # Start timing this callback execution
+        callback_start = perf_counter()
+        
+        # Log time since last callback (timer interval)
+        if not hasattr(self, "_gif_last_t"):
+            self._gif_last_t = callback_start
+        
+        self.node.get_logger().info(f"Timer interval: {callback_start - self._gif_last_t:.4f}s")
+        
         with self.gif_lock:
             if not self.gif_active or not self.gif_messages:
                 return
@@ -301,9 +318,15 @@ class Screen:
             
             # Advance to next frame
             self.gif_frame_index = (self.gif_frame_index + 1) % len(self.gif_messages)
+        
+        # Log callback execution time
+        callback_end = perf_counter()
+        self.node.get_logger().info(f"Callback execution: {callback_end - callback_start:.4f}s")
+        self._gif_last_t = callback_start
 
     def destroy_gif_replay(self):
         """Destroy GIF replay resources"""
+        self.node.get_logger().info("GIF playback stopped")
         with self.gif_lock:
             self.gif_active = False
             if self.gif_timer:
