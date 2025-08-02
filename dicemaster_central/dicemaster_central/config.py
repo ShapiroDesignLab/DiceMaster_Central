@@ -1,0 +1,60 @@
+"""
+Configuration loader for DiceMaster screens
+Loads screen configuration from JSON file and provides client library for ROS nodes
+
+
+spi_config: SPIConfig class
+screen_config_global: ScreenConfigGlobal class
+screen_configs: list of ScreenConfig instances
+"""
+
+from typing import Tuple, List
+from dataclasses import dataclass, field
+from dicemaster_central.constants import Rotation
+
+@dataclass
+class ScreenConfig:
+    """Configuration for a single screen"""
+    id: int
+    bus_id: int
+    bus_dev_id: int
+    default_orientation: int
+    description: str
+
+@dataclass
+class GlobalScreenConfig:
+    """Global screen settings"""
+    auto_rotate: bool = True
+    rotation_margin: float = 0.1
+
+@dataclass
+class SPIConfig:
+    """SPI configuration settings"""
+    max_speed_hz: int = 9600000
+    mode: int = 0
+    bits_per_word: int = 8
+    max_buffer_size: int = 8192
+    num_devices_per_bus: int = 2
+
+@dataclass
+class IMUConfig:
+    """IMU configuration settings"""
+    polling_rate: int = 100
+
+@dataclass
+class DiceConfig:
+    active_spi_controllers: List[int] = field(default_factory=lambda: [0, 1, 3])
+    screen_configs: Tuple[ScreenConfig, ...] = field(default_factory=lambda: (
+        ScreenConfig(id=0, bus_id=0, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 0"),
+        ScreenConfig(id=1, bus_id=0, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 1"),
+        ScreenConfig(id=2, bus_id=1, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 2"),
+        ScreenConfig(id=3, bus_id=1, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 3"),
+        ScreenConfig(id=4, bus_id=3, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 4"),
+        ScreenConfig(id=5, bus_id=3, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 5"),
+    ))
+    global_screen_config: GlobalScreenConfig = field(default_factory=GlobalScreenConfig)
+    spi_config: SPIConfig = field(default_factory=SPIConfig)
+    imu_config: IMUConfig = field(default_factory=IMUConfig)
+
+
+dice_config = DiceConfig()

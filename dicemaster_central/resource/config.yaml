@@ -1,0 +1,76 @@
+# DiceMaster Screen Configuration
+# This file contains the configuration for all six screens in the DiceMaster system
+
+screen_config:
+  # Screen 1 - Top face (facing +Z)
+  screen_1:
+    id: 1
+    bus_id: 0
+    bus_dev_id: 0
+    default_orientation: 0  # 0=0°, 1=90°, 2=180°, 3=270°
+    position: "top"
+    description: "Top face screen"
+    
+  # Screen 2 - Right face (facing +Y)
+  screen_2:
+    id: 2
+    bus_id: 0
+    bus_dev_id: 1
+    default_orientation: 0
+    position: "right"
+    description: "Right face screen"
+    
+  # Screen 3 - Back face (facing +X)
+  screen_3:
+    id: 3
+    bus_id: 1
+    bus_dev_id: 0
+    default_orientation: 0
+    position: "back"
+    description: "Back face screen"
+    
+  # Screen 4 - Left face (facing -Y)
+  screen_4:
+    id: 4
+    bus_id: 1
+    bus_dev_id: 1
+    default_orientation: 0
+    position: "left"
+    description: "Left face screen"
+    
+  # Screen 5 - Front face (facing -X)
+  screen_5:
+    id: 5
+    bus_id: 2
+    bus_dev_id: 0
+    default_orientation: 0
+    position: "front"
+    description: "Front face screen"
+    
+  # Screen 6 - Bottom face (facing -Z)
+  screen_6:
+    id: 6
+    bus_id: 2
+    bus_dev_id: 1
+    default_orientation: 0
+    position: "bottom"
+    description: "Bottom face screen"
+
+# Global screen settings
+screen_config_global:
+  auto_rotate: true
+  rotation_margin: 0.2
+  max_chunk_size: 2040
+  communication_timeout: 1.0
+  ping_interval: 10.0
+  
+# SPI Bus Configuration
+spi_config:
+  max_speed_hz: 96000
+  mode: 0  # SPI mode 0
+  bits_per_word: 8
+  chunk_size: 8192
+  
+imu_config:
+  calibration_duration: 3.0
+  publishing_rate: 120  # Hz
