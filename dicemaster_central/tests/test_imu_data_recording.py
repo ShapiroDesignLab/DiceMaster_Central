@@ -12,7 +12,7 @@ Date: July 6, 2025
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Vector3
-from DiceMaster_Central.msg import RawIMU
+from dicemaster_central_msgs.msg import RawIMU
 import matplotlib.pyplot as plt
 import numpy as np
 import csv

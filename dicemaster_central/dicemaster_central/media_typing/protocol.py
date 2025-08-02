@@ -15,6 +15,9 @@ from dicemaster_central.constants import (
     ErrorCode
 )
 
+from dicemaster_central.config import dice_config
+spi_config = dice_config.spi_config
+
 # Forward reference for type checking
 if TYPE_CHECKING:
     from dicemaster_central.media_typing.media_types import TextEntry
@@ -25,7 +28,6 @@ _SOF_RESPONSE = 0x7F  # Start of Frame for responses
 _HEADER_SIZE = 5  # Header is 5 bytes (SOF + Type + ID + Length)
 _DMA_PADDING = 4  # DMA buffer padding bytes
 _DMA_ALIGNMENT = 4  # DMA buffer alignment requirement (multiples of 4)
-
 
 def encode_text_entry(text_entry: 'TextEntry') -> bytes:
     """Encode a TextEntry object to bytes for protocol transmission"""
@@ -437,21 +439,11 @@ class ImageChunkMessage(ProtocolMessage):
         self.chunk_data = chunk_data
         
         # Validate chunk size against effective limits
-        max_chunk_size = self.get_max_chunk_size()
+        max_chunk_size = spi_config.max_buffer_size
         if len(chunk_data) > max_chunk_size:
             raise ValueError(f"Chunk data too large: {len(chunk_data)} bytes (max {max_chunk_size} bytes)")
         
         self.encode()
-    
-    @staticmethod
-    def get_max_chunk_size(spi_chunk_size: int | None = None) -> int:
-        """Get the maximum chunk size for image data based on SPI configuration"""
-        if spi_chunk_size is None:
-            # Import here to avoid circular dependency
-            from DiceMaster_Central.config.constants import SPI_CHUNK_SIZE
-            spi_chunk_size = SPI_CHUNK_SIZE
-        
-        return calculate_effective_chunk_size(spi_chunk_size)
     
     def _encode_payload(self):
         """Encode the image chunk payload"""

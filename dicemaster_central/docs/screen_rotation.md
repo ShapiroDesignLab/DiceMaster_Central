@@ -49,7 +49,7 @@ status = screen.get_rotation_status()
 
 ### 4. Manual Rotation Setting
 ```python
-from DiceMaster_Central.config.constants import Rotation
+from dicemaster_central.config.constants import Rotation
 
 # Set rotation manually (works regardless of tracking mode)
 screen.set_rotation(Rotation.ROTATION_90)

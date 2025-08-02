@@ -34,7 +34,7 @@ USAGE IN ROS2:
 4. Integration Example:
    import rclpy
    from geometry_msgs.msg import Pose
-   from dicemaster_central.msg import MotionDetection
+   from dicemaster_central_msgs.msg import MotionDetection
    
    class MyNode(Node):
        def __init__(self):
@@ -79,11 +79,11 @@ from math import sin, cos, sqrt, atan2, asin, pi
 import numpy as np
 
 
-from DiceMaster_Central.config.constants import IMU_POLLING_RATE, IMU_HIST_SIZE
+from dicemaster_central.config.constants import IMU_POLLING_RATE, IMU_HIST_SIZE
 from dicemaster_central.utils import QuaternionKalmanFilter
-from DiceMaster_Central.hw.motion_detector import MotionDetector
+from dicemaster_central.hw.motion_detector import MotionDetector
 
-from dicemaster_central.msg import RawIMU, MotionDetection, IMUCalibration, NotificationRequest
+from dicemaster_central_msgs.msg import RawIMU, MotionDetection, IMUCalibration, NotificationRequest
 
 from .imu import BaseIMU
 

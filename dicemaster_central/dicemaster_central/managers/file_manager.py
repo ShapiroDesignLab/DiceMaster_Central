@@ -19,7 +19,7 @@ import json
 
 from dicemaster_central.utils import LimitedID
 
-from DiceMaster_Central.config.constants import CHUNK_SIZE, DYNAMIC_LOADING, TYPE_IMG, TYPE_TXT, TYPE_VID, TYPE_UNKNOWN, \
+from dicemaster_central.config.constants import CHUNK_SIZE, DYNAMIC_LOADING, TYPE_IMG, TYPE_TXT, TYPE_VID, TYPE_UNKNOWN, \
     README_REGEX_PATTERN, TXT_EXTS, IMG_EXTS, VID_EXTS, IMG_WIDTH_FULL, IMG_HEIGHT_FULL, \
     IMG_WIDTH_HALF, IMG_HEIGHT_HALF, ERR_NOT_LOADED
 

@@ -14,12 +14,12 @@ import threading
 import time
 
 # DiceMaster imports
-from DiceMaster_Central.data_types.media_types import VirtualTextGroup
+from dicemaster_central.data_types.media_types import VirtualTextGroup
 from dicemaster_central.hw.screen import ScreenManager, ScreenRequest, ContentType
-from DiceMaster_Central.config.constants import Rotation
+from dicemaster_central.config.constants import Rotation
 
 # ROS message imports  
-from DiceMaster_Central.msg import NotificationRequest
+from dicemaster_central_msgs.msg import NotificationRequest
 
 
 class NotificationManager(Node):

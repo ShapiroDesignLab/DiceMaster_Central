@@ -1,0 +1,26 @@
+{
+    "bg_color": "0x0000",
+    "texts": [
+        {
+            "x_cursor": 48,
+            "y_cursor": 48, 
+            "font_name": "tf",
+            "font_color": "0xFFFF",
+            "text": "Hey guys,"
+        },
+        {
+            "x_cursor": 48,
+            "y_cursor": 80,
+            "font_name": "tf",
+            "font_color": "0xFFFF",
+            "text": "I am testing the new"
+        },
+        {
+            "x_cursor": 48,
+            "y_cursor": 112,
+            "font_name": "tf",
+            "font_color": "0xFFFF",
+            "text": "media typing protocol."
+        }
+    ]
+}

@@ -7,13 +7,14 @@ This module handles communication with peripheral ESP32 boards through a chosen 
 Protocols: see https://docs.google.com/document/d/1ovbKFz1-aYnTLMupWtqQHsDRdrbPbAs7edm_ehnVuko
 """
 import threading
+import time
 import numpy as np
 from queue import Queue, Empty
 from typing import Dict, Optional, Any
 import tf2_ros
 
 # Import the new message type
-from DiceMaster_Central.msg import ScreenMediaCmd
+from dicemaster_central_msgs.msg import ScreenMediaCmd
 from dicemaster_central.config import dice_config
 from dicemaster_central.constants import (
     MessagePriority, RequestStatus, ContentType, GIF_FRAME_TIME,
@@ -22,6 +23,7 @@ from dicemaster_central.constants import (
 from dicemaster_central.media_typing.media_types import (
     TextGroup, Image as MediaImage, GIF
 )
+from dicemaster_central.hw.screen import ScreenBusManager
 
 SPI_CHUNK_SIZE = dice_config.spi_config.max_buffer_size
 
@@ -53,7 +55,7 @@ class Screen:
         # Basic properties
         self.screen_id = screen_id
         self.node = node
-        self.bus_manager = bus_manager
+        self.bus_manager: ScreenBusManager = bus_manager
         self.using_rotation = using_rotation
         self.rotation_margin = rotation_margin
         self.current_rotation = Rotation.ROTATION_0
@@ -139,6 +141,7 @@ class Screen:
             return
         
         self.request_status[req_id] = RequestStatus.PENDING
+        self.node.get_logger().info(f"Queuening media request for screen {self.screen_id} with ID {req_id}")
         self.media_processing_queue.put((req_id, request_msg))
 
     def push_to_bus_manager(self, msgs, priority=MessagePriority.NORMAL) -> None:
@@ -195,6 +198,7 @@ class Screen:
             self.last_content_type = ContentType.TEXT
             
             # Push to bus manager
+            self.node.get_logger().info("Pushed text prompt to bus")
             self.push_to_bus_manager(text_message, MessagePriority.HIGH)
             return True
             
@@ -214,6 +218,7 @@ class Screen:
             self.last_content_type = 'image'
             
             # Push all messages to bus manager
+            self.node.get_logger().info("Pushed image prompt to bus")
             self.push_to_bus_manager(messages)
             return True
             
@@ -242,6 +247,7 @@ class Screen:
             self.last_content_type = 'gif'
             
             # Setup GIF replay
+            self.node.get_logger().info("GIF replay setup")
             self.setup_gif_replay(frame_message_lists)
             return True
             

@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
 """
-Test suite for Screen Media Service
-Tests the complete pipeline from ROS message to screen display
+Simplified test for Screen Media Service
+Tests the complete pipeline from ROS message to screen display using existing test assets
+
+Two test configurations available:
+1. 'single' - Tests only screen ID 1 (recommended when you have only one screen connected)
+2. 'multi' - Tests screen IDs 1, 2, and 4 (use when you have multiple screens)
+
+Usage:
+    python3 test_screen.py single    # Test single screen (default)
+    python3 test_screen.py multi     # Test multiple screens
+    python3 test_screen.py           # Defaults to single screen test
 """
 
-import os
-import json
-import time
-import threading
 from pathlib import Path
 
 import rclpy
 from rclpy.node import Node
-from DiceMaster_Central.msg import ScreenMediaCmd
+from dicemaster_central_msgs.msg import ScreenMediaCmd
 from dicemaster_central.constants import ContentType
+from dicemaster_central.hw.screen.screen_media_service import ScreenMediaService
 
 
 class ScreenMediaTestPublisher(Node):
     """Test node that publishes media commands to test the screen service"""
     
-    def __init__(self):
+    def __init__(self, test_config='single'):
         super().__init__('screen_media_test_publisher')
         
         # Publisher for media commands
@@ -29,142 +35,41 @@ class ScreenMediaTestPublisher(Node):
             10
         )
         
-        # Test assets directory
+        # Test assets directory (use existing assets)
         self.test_assets_dir = Path(__file__).parent / 'test_assets'
-        self.test_assets_dir.mkdir(exist_ok=True)
         
-        # Create test assets
-        self._create_test_assets()
-        
-        # Test sequence
-        self.test_sequence = [
-            {'screen_id': 0, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'test_text.json')},
-            {'screen_id': 1, 'media_type': ContentType.IMAGE, 'file_path': str(self.test_assets_dir / 'test_image.png')},
-            {'screen_id': 2, 'media_type': ContentType.GIF, 'file_path': str(self.test_assets_dir / 'test_gif.gif')},
-            {'screen_id': 0, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'test_text2.json')},
-            {'screen_id': 3, 'media_type': ContentType.IMAGE, 'file_path': str(self.test_assets_dir / 'test_image.png')},
-            {'screen_id': 4, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'test_text.json')},
-        ]
+        # Test configurations
+        if test_config == 'single':
+            # Single screen test (screen ID 1 only)
+            self.test_sequence = [
+                {'screen_id': 1, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'hey_guys.json')},
+                {'screen_id': 1, 'media_type': ContentType.IMAGE, 'file_path': str(self.test_assets_dir / 'cat_480.jpg')},
+                {'screen_id': 1, 'media_type': ContentType.GIF, 'file_path': str(self.test_assets_dir / 'miss-you.gif.d')},
+                {'screen_id': 1, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'hey_guys.json')},
+            ]
+            self.get_logger().info("Running SINGLE SCREEN test configuration (Screen ID 1 only)")
+        elif test_config == 'multi':
+            # Multiple screens test (screen IDs 1, 2, 4)
+            self.test_sequence = [
+                {'screen_id': 1, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'hey_guys.json')},
+                {'screen_id': 2, 'media_type': ContentType.IMAGE, 'file_path': str(self.test_assets_dir / 'cat_480.jpg')},
+                {'screen_id': 4, 'media_type': ContentType.GIF, 'file_path': str(self.test_assets_dir / 'miss-you.gif.d')},
+                {'screen_id': 1, 'media_type': ContentType.IMAGE, 'file_path': str(self.test_assets_dir / 'cat_480.jpg')},
+                {'screen_id': 2, 'media_type': ContentType.TEXT, 'file_path': str(self.test_assets_dir / 'hey_guys.json')},
+                {'screen_id': 4, 'media_type': ContentType.IMAGE, 'file_path': str(self.test_assets_dir / 'cat_480.jpg')},
+            ]
+            self.get_logger().info("Running MULTI SCREEN test configuration (Screen IDs 1, 2, 4)")
+        else:
+            raise ValueError(f"Invalid test_config: {test_config}. Use 'single' or 'multi'")
         
         self.current_test_index = 0
-        self.max_tests = len(self.test_sequence) * 2  # Run sequence twice
+        self.max_tests = len(self.test_sequence)
         
-        # Timer for publishing test commands every 2 seconds
-        self.timer = self.create_timer(2.0, self._publish_test_command)
+        # Timer for publishing test commands every 3 seconds
+        self.timer = self.create_timer(3.0, self._publish_test_command)
         
         self.get_logger().info(f"Screen Media Test Publisher started with {len(self.test_sequence)} test cases")
-        self.get_logger().info(f"Test assets created in: {self.test_assets_dir}")
-
-    def _create_test_assets(self):
-        """Create test media assets for testing"""
-        
-        # Create test text configurations
-        text_config_1 = {
-            "text_elements": [
-                {
-                    "text": "Hello World!",
-                    "x": 10,
-                    "y": 20,
-                    "font_size": 16,
-                    "color": [255, 255, 255],
-                    "background_color": [0, 0, 0]
-                },
-                {
-                    "text": "Screen Test",
-                    "x": 10,
-                    "y": 50,
-                    "font_size": 12,
-                    "color": [255, 0, 0],
-                    "background_color": [0, 0, 0]
-                }
-            ],
-            "background_color": [0, 0, 0],
-            "screen_width": 128,
-            "screen_height": 128
-        }
-        
-        text_config_2 = {
-            "text_elements": [
-                {
-                    "text": "Test Complete!",
-                    "x": 5,
-                    "y": 30,
-                    "font_size": 14,
-                    "color": [0, 255, 0],
-                    "background_color": [0, 0, 0]
-                }
-            ],
-            "background_color": [0, 0, 0],
-            "screen_width": 128,
-            "screen_height": 128
-        }
-        
-        # Write text configs to JSON files
-        with open(self.test_assets_dir / 'test_text.json', 'w') as f:
-            json.dump(text_config_1, f, indent=2)
-            
-        with open(self.test_assets_dir / 'test_text2.json', 'w') as f:
-            json.dump(text_config_2, f, indent=2)
-        
-        # Create a simple test image (solid color squares)
-        try:
-            from PIL import Image
-            
-            # Create a 128x128 test image with colored squares
-            img = Image.new('RGB', (128, 128), color=(0, 0, 0))
-            pixels = img.load()
-            
-            # Red square
-            for x in range(10, 50):
-                for y in range(10, 50):
-                    pixels[x, y] = (255, 0, 0)
-            
-            # Green square
-            for x in range(70, 110):
-                for y in range(10, 50):
-                    pixels[x, y] = (0, 255, 0)
-                    
-            # Blue square
-            for x in range(10, 50):
-                for y in range(70, 110):
-                    pixels[x, y] = (0, 0, 255)
-                    
-            # White square
-            for x in range(70, 110):
-                for y in range(70, 110):
-                    pixels[x, y] = (255, 255, 255)
-            
-            img.save(self.test_assets_dir / 'test_image.png')
-            
-            # Create a simple animated GIF (color cycling)
-            frames = []
-            colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]
-            
-            for color in colors:
-                frame = Image.new('RGB', (128, 128), color=color)
-                # Add a moving white dot
-                pixels = frame.load()
-                dot_x = 20 + colors.index(color) * 20
-                for x in range(dot_x-5, dot_x+5):
-                    for y in range(60, 70):
-                        if 0 <= x < 128:
-                            pixels[x, y] = (255, 255, 255)
-                frames.append(frame)
-            
-            # Save as animated GIF
-            frames[0].save(
-                self.test_assets_dir / 'test_gif.gif',
-                save_all=True,
-                append_images=frames[1:],
-                duration=500,  # 500ms per frame
-                loop=0
-            )
-            
-        except ImportError:
-            self.get_logger().warn("PIL not available, creating placeholder image files")
-            # Create placeholder files
-            (self.test_assets_dir / 'test_image.png').touch()
-            (self.test_assets_dir / 'test_gif.gif').touch()
+        self.get_logger().info(f"Using test assets from: {self.test_assets_dir}")
 
     def _publish_test_command(self):
         """Publish the next test command"""
@@ -174,7 +79,7 @@ class ScreenMediaTestPublisher(Node):
             return
         
         # Get current test case
-        test_case = self.test_sequence[self.current_test_index % len(self.test_sequence)]
+        test_case = self.test_sequence[self.current_test_index]
         
         # Create and publish message
         msg = ScreenMediaCmd()
@@ -184,73 +89,88 @@ class ScreenMediaTestPublisher(Node):
         
         self.publisher.publish(msg)
         
-        cycle = (self.current_test_index // len(self.test_sequence)) + 1
-        case_num = (self.current_test_index % len(self.test_sequence)) + 1
-        
         self.get_logger().info(
-            f"Published test {self.current_test_index + 1}/{self.max_tests} "
-            f"(Cycle {cycle}, Case {case_num}): "
+            f"Published test {self.current_test_index + 1}/{self.max_tests}: "
             f"Screen {msg.screen_id}, Type {msg.media_type}, File {Path(msg.file_path).name}"
         )
         
         self.current_test_index += 1
 
 
-class ScreenMediaTestRunner:
-    """Test runner that coordinates the test execution"""
+def test_screen_media_service(test_config='single'):
+    """Main test function that runs both service and test publisher
     
-    def __init__(self):
-        self.test_publisher = None
-        self.test_thread = None
+    Args:
+        test_config (str): 'single' for single screen test (ID 1) or 'multi' for multiple screens (IDs 1,2,4)
+    """
+    print(f"Starting Screen Media Service Test - {test_config.upper()} configuration")
+    print("This test will:")
+    print("- Start the screen media service")
+    print("- Publish media commands every 3 seconds")
+    if test_config == 'single':
+        print("- Test ONLY screen ID 1 with different media types")
+        print("- Perfect for testing with only one screen connected")
+    else:
+        print("- Test screen IDs 1, 2, and 4 with different media types")
+        print("- Use this when you have multiple screens connected")
+    print()
+    
+    # Initialize ROS2
+    rclpy.init()
+    
+    try:
+        # Create both the service and test publisher
+        screen_service = ScreenMediaService()
+        test_publisher = ScreenMediaTestPublisher(test_config=test_config)
         
-    def run_test(self, duration_seconds=30):
-        """Run the screen media test for specified duration"""
-        print(f"Starting Screen Media Service Test (duration: {duration_seconds}s)")
-        print("This test will:")
-        print("- Create test media assets (text configs, image, GIF)")
-        print("- Publish media commands every 2 seconds")
-        print("- Test all screen IDs with different media types")
-        print("- Run the test sequence twice")
-        print()
+        # Use SingleThreadedExecutor to run both nodes with proper time sharing
+        from rclpy.executors import SingleThreadedExecutor
+        executor = SingleThreadedExecutor()
+        executor.add_node(screen_service)
+        executor.add_node(test_publisher)
         
-        # Initialize ROS2
-        rclpy.init()
+        print("Running test with SingleThreadedExecutor... Press Ctrl+C to stop")
+        executor.spin()
         
-        try:
-            # Create test publisher
-            self.test_publisher = ScreenMediaTestPublisher()
-            
-            # Run test in thread with timeout
-            def test_worker():
-                rclpy.spin(self.test_publisher)
-            
-            self.test_thread = threading.Thread(target=test_worker, daemon=True)
-            self.test_thread.start()
-            
-            # Wait for test completion or timeout
-            start_time = time.time()
-            while time.time() - start_time < duration_seconds:
-                if not self.test_thread.is_alive():
-                    break
-                time.sleep(0.1)
-            
-            print("\nTest completed!")
-            
-        except KeyboardInterrupt:
-            print("\nTest interrupted by user")
-        except Exception as e:
-            print(f"Test error: {e}")
-        finally:
-            if self.test_publisher:
-                self.test_publisher.destroy_node()
-            rclpy.shutdown()
+    except KeyboardInterrupt:
+        print("\nTest interrupted by user")
+    except Exception as e:
+        print(f"Test error: {e}")
+    finally:
+        rclpy.shutdown()
 
 
-def test_screen_media_service():
-    """Main test function"""
-    runner = ScreenMediaTestRunner()
-    runner.run_test(duration_seconds=30)
+def test_single_screen():
+    """Convenience function to test single screen (ID 1 only)"""
+    test_screen_media_service('single')
+
+
+def test_multi_screen():
+    """Convenience function to test multiple screens (IDs 1, 2, 4)"""
+    test_screen_media_service('multi')
 
 
 if __name__ == '__main__':
-    test_screen_media_service()
+    import sys
+    
+    # Check command line arguments
+    if len(sys.argv) > 1:
+        config = sys.argv[1].lower()
+        if config in ['single', 'multi']:
+            test_screen_media_service(config)
+        else:
+            print("Usage: python3 test_screen.py [single|multi]")
+            print()
+            print("Configurations:")
+            print("  single - Test only screen ID 1 (default)")
+            print("  multi  - Test screen IDs 1, 2, and 4")
+            print()
+            print("Examples:")
+            print("  python3 test_screen.py single")
+            print("  python3 test_screen.py multi")
+    else:
+        # Default to single screen test
+        print("No configuration specified, using 'single' (screen ID 1 only)")
+        print("Use 'python3 test_screen.py multi' to test multiple screens")
+        print()
+        test_screen_media_service('single')

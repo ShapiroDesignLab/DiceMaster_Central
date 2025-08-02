@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 import threading
 import subprocess
-from DiceMaster_Central.remote_logger import RemoteLogger, LogEntry
+from dicemaster_central.remote_logger import RemoteLogger, LogEntry
 from datetime import datetime
 
 

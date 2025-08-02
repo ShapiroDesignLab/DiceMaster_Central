@@ -22,12 +22,12 @@ from pathlib import Path
 import rclpy
 from rclpy.node import Node
 from std_srvs.srv import Empty, Trigger
-from DiceMaster_Central.msg import DatasetInfo
+from dicemaster_central_msgs.msg import DatasetInfo
 
 # Add the package to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from DiceMaster_Central.config.constants import DATASETS_PATH, DATASET_CACHE_PATH, DATASET_METADATA_PATH
+from dicemaster_central.config.constants import DATASETS_PATH, DATASET_CACHE_PATH, DATASET_METADATA_PATH
 
 
 class DatasetLoaderTest(Node):

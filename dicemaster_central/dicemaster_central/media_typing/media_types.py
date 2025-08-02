@@ -10,6 +10,8 @@ from dicemaster_central.constants import (
     ImageResolution,
     Rotation,
     FontID,
+    FONT_NAME_TO_ID,
+    MAX_TEXT_NUM_BYTES
 )
 
 from dicemaster_central.media_typing.protocol import (
@@ -19,6 +21,22 @@ from dicemaster_central.media_typing.protocol import (
 )
 
 SPI_CHUNK_SIZE = dice_config.spi_config.max_buffer_size
+
+def is_str_of_hex_num(s: str, numbytes=2):
+    """Check if a string is a valid hex number of specified byte length"""
+    if not isinstance(s, str):
+        return False
+    if not s.startswith('0x'):
+        return False
+    hex_part = s[2:]
+    if len(hex_part) != 2 * numbytes:
+        return False
+    return all(c in '0123456789ABCDEFabcdef' for c in hex_part)
+
+def hex_str_to_int(s: str, numbytes=2):
+    """Convert str '0xFFFF' to int 0xFFFF"""
+    assert is_str_of_hex_num(s, numbytes)
+    return int(s, 16)
 
 class Media(BaseModel, ABC):
     """Base class for all media types"""
@@ -31,8 +49,15 @@ class Media(BaseModel, ABC):
     
     def __init__(self, **data):
         super().__init__(**data)
-        self.content = self._load_content()
-    
+        try:
+            self.content = self._load_content()
+        except Exception as e:
+            raise Exception(f"Error loading content from {self.file_path}: {e}")
+
+    @abstractmethod
+    def _load_content(self):
+        pass
+
     @abstractmethod
     def to_msg(self, **kwargs) -> Any:
         """Generate protocol messages for the media."""
@@ -43,7 +68,7 @@ class TextEntry(BaseModel):
     x_cursor: int = Field(default=48, description="X cursor position (0-479)")
     y_cursor: int = Field(default=48, description="Y cursor position (0-479)")
     font_id: int = Field(default=0, description="Font ID (0-5)")
-    font_color: int = Field(default=0xFFFF, description="Font color (16-bit RGB565)")
+    font_color: Union[str, int] = Field(default=0xFFFF, description="Font color (16-bit RGB565)")
     text: str = Field(default='', description="Text content (UTF-8 encoded)")
     
     @validator('x_cursor')
@@ -68,6 +93,11 @@ class TextEntry(BaseModel):
     
     @validator('font_color')
     def validate_font_color(cls, v):
+        if isinstance(v, str):
+            try:
+                v = hex_str_to_int(v, numbytes=2)
+            except ValueError:
+                raise ValueError(f"Invalid hex color format: {v}")
         if not 0 <= v <= 0xFFFF:
             raise ValueError(f"Font color must be a 16-bit value (0-65535), got {v}")
         return v
@@ -75,7 +105,7 @@ class TextEntry(BaseModel):
     @validator('text')
     def validate_text_length(cls, v):
         text_bytes = v.encode('utf-8')
-        if len(text_bytes) > 255:
+        if len(text_bytes) > MAX_TEXT_NUM_BYTES:
             raise ValueError(f"Text string too long (max 255 bytes): '{v[:50]}...'")
         return v
     
@@ -88,7 +118,7 @@ class TextGroup(Media):
     media_type: str = Field(default='text', const=True)
     
     # Protocol fields for TEXT_BATCH message
-    bg_color: int = Field(default=0x0000, description="Background color (16-bit RGB565)")
+    bg_color: Union[str, int] = Field(default=0x0000, description="Background color (16-bit RGB565)")
     texts: List[TextEntry] = Field(default_factory=list, description="List of TextEntry objects")
     
     @validator('file_path')
@@ -97,32 +127,55 @@ class TextGroup(Media):
         if not v.endswith(".json"):
             raise ValueError("TextGroup file must be a .json file")
         return v
+    
+    @validator('bg_color')
+    def validate_bg_color(cls, v):
+        if isinstance(v, str):
+            # Handle hex string format
+            if not v.startswith('0x') or len(v) != 6:
+                raise ValueError(f"Background color hex string must be in format '0xXXXX', got {v}")
+            try:
+                v = hex_str_to_int(v, numbytes=2)
+            except ValueError:
+                raise ValueError(f"Invalid hex color format: {v}")
+        
+        if not 0 <= v <= 0xFFFF:
+            raise ValueError(f"Background color must be a 16-bit value (0-65535), got {v}")
+        return v
 
     def _load_content(self):
         with open(self.file_path, 'r', encoding='utf-8') as f:
             payload = json.load(f)
         
-        # Load protocol-required fields from JSON
+        # Load protocol-required fields from JSON - let validator handle conversion
         self.bg_color = payload.get('bg_color', 0x0000)
-        
-        # Load text entries - expect array of objects with x, y, font_id, font_color, text
+        self.bg_color = hex_str_to_int(self.bg_color, numbytes=2) if isinstance(self.bg_color, str) else self.bg_color
+
+        # Load text entries - expect array of objects with x, y, font_name/font_id, font_color, text
         texts_data = payload.get('texts', [])
         self.texts = []
         
         for text_entry in texts_data:
-            try:
-                # Support both old format (without font_color) and new format (with font_color)
-                text_obj = TextEntry(
-                    x_cursor=text_entry.get('x', text_entry.get('x_cursor', 0)),
-                    y_cursor=text_entry.get('y', text_entry.get('y_cursor', 0)),
-                    font_id=text_entry.get('font_id', 0),
-                    font_color=text_entry.get('font_color', 0xFFFF),  # Default white
-                    text=text_entry.get('text', '')
-                )
-                self.texts.append(text_obj)
-            except Exception as e:
-                print(f"Failed to create TextEntry: {e}")
-        
+            # Handle font name conversion to font ID
+            font_id = text_entry.get('font_id', 0)
+            if 'font_name' in text_entry:
+                font_name = text_entry['font_name']
+                if font_name not in FONT_NAME_TO_ID:
+                    raise ValueError(f"Unknown font name: {font_name}")
+                font_id = FONT_NAME_TO_ID[font_name]
+            
+            # Handle font color (can be hex string or int) - let validator handle conversion
+            font_color = text_entry.get('font_color', 0xFFFF)
+            
+            # Support both old format (without font_color) and new format (with font_color)
+            text_obj = TextEntry(
+                x_cursor=text_entry.get('x', text_entry.get('x_cursor', 0)),
+                y_cursor=text_entry.get('y', text_entry.get('y_cursor', 0)),
+                font_id=font_id,
+                font_color=font_color,
+                text=text_entry.get('text', '')
+            )
+            self.texts.append(text_obj)
         return payload
     
     def to_msg(self, **kwargs) -> TextBatchMessage:
@@ -311,9 +364,9 @@ class GIF(Media):
     media_type: str = Field(default='motion_picture', const=True)
     
     # Protocol fields - similar to Image but for multiple frames
-    image_id: int = Field(default=0, description="Starting image ID for sequence")
+    image_id: int = Field(default=0, description="Image ID (0-255)")
     image_format: ImageFormat = Field(default=ImageFormat.JPEG, description="Format of frame images")
-    resolution: ImageResolution = Field(default=ImageResolution.SQ480, description="Resolution of frames")
+    resolution: ImageResolution = Field(default=ImageResolution.SQ240, description="Resolution of frames")
     delay_time: int = Field(default=100, description="Frame delay in ms (0-65535)")
     
     # Motion picture specific fields
@@ -324,7 +377,7 @@ class GIF(Media):
     @validator('file_path')
     def validate_gif_directory(cls, v):
         if not v.endswith('.gif.d'):
-            raise ValueError("MotionPicture file must be a .gif.d directory")
+            raise ValueError("GIF file must be a .gif.d directory")
         return v
     
     @validator('image_id')
@@ -362,7 +415,7 @@ class GIF(Media):
                 frame_data = f.read()
                 self.frames_data.append(frame_data)
         
-        # Set motion picture metadata
+        # Set gif metadata
         self.frame_count = len(self.frames_data)
         self.total_duration = self.frame_count * self.delay_time
         
@@ -428,7 +481,7 @@ class GIF(Media):
         total_chunks = 1 + remaining_chunks  # 1 for embedded chunk 0 + remaining chunks
         
         return {
-            'image_id': self.image_id + frame_index,
+            'image_id': frame_index,
             'image_format': self.image_format,
             'resolution': self.resolution,
             'delay_time': self.delay_time,
@@ -446,31 +499,28 @@ class GIF(Media):
         
         frame_messages = []
         
-        # Create an Image object for each frame and get its messages
-        for frame_index, frame_data in enumerate(self.frames_data):
-            # Create a temporary file for this frame
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-                temp_file.write(frame_data)
-                temp_path = temp_file.name
+        # Get the sorted frame files from the directory
+        frame_files = []
+        for frame_file in os.listdir(self.file_path):
+            if frame_file.endswith(".jpg"):
+                frame_files.append(frame_file)
+        
+        # Sort numerically (0.jpg, 1.jpg, ..., k.jpg)
+        frame_files.sort(key=lambda x: int(x.split('.')[0]))
+        
+        # Create an Image object for each frame using existing files
+        for frame_index, frame_file in enumerate(frame_files):
+            frame_path = os.path.join(self.file_path, frame_file)
             
-            try:
-                # Create Image object for this frame
-                frame_image = Image(
-                    file_path=temp_path,
-                    image_id=self.image_id + frame_index,
-                    delay_time=self.delay_time
-                )
-                
-                # Get the protocol messages for this frame - effective chunk size is calculated inside to_msg
-                messages = frame_image.to_msg(rotation=rotation, chunk_size=spi_chunk_size)
-                frame_messages.append(messages)
-                
-            finally:
-                # Clean up temporary file
-                os.unlink(temp_path)
+            # Create Image object for this frame using the existing file
+            frame_image = Image(
+                file_path=frame_path,
+                image_id=frame_index,
+                delay_time=self.delay_time
+            )
+            
+            # Get the protocol messages for this frame - effective chunk size is calculated inside to_msg
+            messages = frame_image.to_msg(rotation=rotation, chunk_size=spi_chunk_size)
+            frame_messages.append(messages)
         
         return frame_messages
-
-
-# Alias for backward compatibility
-MotionPicture = GIF

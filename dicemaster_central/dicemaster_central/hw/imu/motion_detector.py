@@ -5,7 +5,7 @@ USAGE IN ROS2:
 ==============
 
 1. Import and Initialize:
-   from DiceMaster_Central.hw.motion_detector import MotionDetector
+   from dicemaster_central.hw.motion_detector import MotionDetector
    
    motion_detector = MotionDetector(history_size=50)
 

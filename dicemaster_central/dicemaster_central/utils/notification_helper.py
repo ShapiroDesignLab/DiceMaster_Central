@@ -7,7 +7,7 @@ without dealing with the message publishing details.
 
 import rclpy
 from rclpy.node import Node
-from DiceMaster_Central.msg import NotificationRequest
+from dicemaster_central_msgs.msg import NotificationRequest
 from typing import Optional
 
 

@@ -15,7 +15,7 @@ Raw sensor readings from the MPU6050 IMU sensor.
 
 **Usage:**
 ```python
-from dicemaster_central.msg import RawIMU
+from dicemaster_central_msgs.msg import RawIMU
 
 # Publishing raw IMU data
 raw_msg = RawIMU()
@@ -42,7 +42,7 @@ Complete pose estimation result with orientation, Euler angles, and corrected se
 
 **Usage:**
 ```python
-from dicemaster_central.msg import IMUPose
+from dicemaster_central_msgs.msg import IMUPose
 
 def pose_callback(msg):
     # Get Euler angles
@@ -71,7 +71,7 @@ Comprehensive motion detection results with boolean flags and intensity metrics.
 
 **Usage:**
 ```python
-from dicemaster_central.msg import MotionDetection
+from dicemaster_central_msgs.msg import MotionDetection
 
 def motion_callback(msg):
     if msg.shaking:
@@ -103,7 +103,7 @@ Calibration status and quality metrics.
 
 **Usage:**
 ```python
-from dicemaster_central.msg import IMUCalibration
+from dicemaster_central_msgs.msg import IMUCalibration
 
 def calibration_callback(msg):
     if msg.status == "CALIBRATING":
@@ -125,7 +125,7 @@ Notification request message for the DiceMaster notification system.
 
 **Usage:**
 ```python
-from dicemaster_central.msg import NotificationRequest
+from dicemaster_central_msgs.msg import NotificationRequest
 
 # Publishing a notification
 notif_msg = NotificationRequest()
@@ -177,7 +177,7 @@ The IMU system publishes to the following topics:
 
 2. **Import in Python:**
    ```python
-   from dicemaster_central.msg import RawIMU, IMUPose, MotionDetection, IMUCalibration
+   from dicemaster_central_msgs.msg import RawIMU, IMUPose, MotionDetection, IMUCalibration
    ```
 
 3. **Use in other packages:**

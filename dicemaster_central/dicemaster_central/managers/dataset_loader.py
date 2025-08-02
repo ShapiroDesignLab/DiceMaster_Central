@@ -30,13 +30,13 @@ from rclpy.node import Node
 from rclpy.service import Service
 from std_srvs.srv import Empty, Trigger
 from std_msgs.msg import Bool, String, Header
-from DiceMaster_Central.msg import DatasetInfo
+from dicemaster_central_msgs.msg import DatasetInfo
 
-from DiceMaster_Central.config.constants import (
-    SD_ROOT_PATH, CACHE_PATH, DATASETS_PATH, DATASET_CACHE_PATH, 
+from dicemaster_central.config.constants import (
+    CACHE_PATH, DATASETS_PATH, DATASET_CACHE_PATH, 
     DATASET_METADATA_PATH, CACHE_SIZE_LIMIT, CACHE_SIZE_TARGET,
     TYPE_IMG, TYPE_TXT, TYPE_VID, TYPE_UNKNOWN,
-    TXT_EXTS, IMG_EXTS, VID_EXTS, README_REGEX_PATTERN
+    TXT_EXTS, IMG_EXTS, VID_EXTS
 )
 
 

@@ -8,7 +8,7 @@ This shows how other ROS nodes can publish notifications to the /dice_system/not
 import rclpy
 from rclpy.node import Node
 import time
-from DiceMaster_Central.msg import NotificationRequest
+from dicemaster_central_msgs.msg import NotificationRequest
 
 
 class NotificationTester(Node):

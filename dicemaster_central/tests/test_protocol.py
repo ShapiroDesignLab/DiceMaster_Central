@@ -8,7 +8,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dicemaster_central.media_typing.protocol import *
-from DiceMaster_Central.config.constants import MessageType, Rotation, ImageFormat, ImageResolution, ErrorCode
+from dicemaster_central.config.constants import MessageType, Rotation, ImageFormat, ImageResolution, ErrorCode
 
 def test_text_batch_message():
     """Test TextBatchMessage encoding/decoding with detailed validation"""

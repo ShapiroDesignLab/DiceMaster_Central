@@ -10,7 +10,7 @@ from typing import Dict
 
 import rclpy
 from rclpy.node import Node
-from DiceMaster_Central.msg import ScreenMediaCmd
+from dicemaster_central_msgs.msg import ScreenMediaCmd
 from .screen_bus_manager import ScreenBusManager
 from .screen import Screen
 from dicemaster_central.config import dice_config
@@ -37,6 +37,8 @@ class ScreenMediaService(Node):
         self.bus_managers = {
             bus_id: ScreenBusManager(bus_id, self) for bus_id in self.spi_buses
         }
+        for bus_manager in self.bus_managers.values():
+            bus_manager.start()
 
         # Create all screens
         self.screens: Dict[int, Screen] = {

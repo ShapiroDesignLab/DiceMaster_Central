@@ -31,7 +31,6 @@ class QueuedMessage:
             return self.priority < other.priority
         return self.timestamp < other.timestamp
 
-
 class ScreenBusManager:
     """
     Manages a single SPI bus with multiple screens.
@@ -96,8 +95,6 @@ class ScreenBusManager:
 
     def stop(self):
         """Stop the bus manager"""
-        self.running = False
-        
         # Join threads
         if self.transmission_thread and self.transmission_thread.is_alive():
             self.transmission_thread.join(timeout=2.0)
@@ -106,6 +103,8 @@ class ScreenBusManager:
         for spi_device in self.spi_devices.values():
             spi_device.down()
         
+        # Stop
+        self.running = False
         self.node.get_logger().info(f"Stopped bus manager for bus {self.bus_id}")
 
     def queue_protocol_message(self, screen_id: int, message: ProtocolMessage, priority: int = MessagePriority.NORMAL) -> bool:
@@ -123,7 +122,6 @@ class ScreenBusManager:
         
         # Add to queue
         self.message_queue.put(queued_msg)
-        
         return True
     
     def _transmission_worker(self):

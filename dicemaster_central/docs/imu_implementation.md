@@ -226,7 +226,7 @@ ros2 topic list | grep /imu/motion
 ### Using Custom Messages in Python
 
 ```python
-from dicemaster_central.msg import RawIMU, IMUPose, MotionDetection, IMUCalibration
+from dicemaster_central_msgs.msg import RawIMU, IMUPose, MotionDetection, IMUCalibration
 
 # Subscribe to comprehensive motion detection
 def motion_callback(msg):
@@ -246,7 +246,7 @@ def pose_callback(msg):
 ### Publishing Raw IMU Data
 
 ```python
-from dicemaster_central.msg import RawIMU
+from dicemaster_central_msgs.msg import RawIMU
 
 # Create and publish raw IMU data
 raw_msg = RawIMU()

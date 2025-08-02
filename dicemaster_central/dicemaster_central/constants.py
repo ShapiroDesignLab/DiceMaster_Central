@@ -1,7 +1,7 @@
 """
 Utility class for constants and macros
 """
-from enum import IntEnum
+from enum import IntEnum, Enum
 
 ##########################
 # 
@@ -53,6 +53,25 @@ class FontID(IntEnum):
     CHINESE=3
     CYRILLIC=4
     DEVANAGARI=5
+
+class FontName(Enum):
+    """Font names for text entries"""
+    NOTEXT = "no_text"
+    TF = "tf"
+    ARABIC = "arabic"
+    CHINESE = "chinese"
+    CYRILLIC = "cyrillic"
+    DEVANAGARI = "devanagari"
+
+# Font name to ID mapping
+FONT_NAME_TO_ID = {
+    "no_text": FontID.NOTEXT,
+    "tf": FontID.TF,
+    "arabic": FontID.ARABIC,
+    "chinese": FontID.CHINESE,
+    "cyrillic": FontID.CYRILLIC,
+    "devanagari": FontID.DEVANAGARI,
+}
 
 class MessagePriority(IntEnum):
     """Message priority constants"""
@@ -125,7 +144,7 @@ ContentTypeExts = {
     ContentType.GIF: [''],
 }
 README_REGEX_PATTERN = r'^(?i:readme).*'
-
+MAX_TEXT_NUM_BYTES = 255
 
 ImageRes = {
     "full": 480,

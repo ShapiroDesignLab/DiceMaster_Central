@@ -41,7 +41,7 @@ python3 /home/dice/DiceMaster/DiceMaster_Central/launch/launch_notification_mana
 ```python
 import rclpy
 from rclpy.node import Node
-from DiceMaster_Central.msg import NotificationRequest
+from dicemaster_central_msgs.msg import NotificationRequest
 
 class YourNode(Node):
     def __init__(self):
