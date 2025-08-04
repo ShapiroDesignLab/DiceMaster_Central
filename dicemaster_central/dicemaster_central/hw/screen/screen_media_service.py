@@ -6,13 +6,11 @@ U-M Shapiro Design Lab
 Daniel Hou @2024
 """
 import time
-from typing import Dict
 
 import rclpy
 from rclpy.node import Node
 from dicemaster_central_msgs.msg import ScreenMediaCmd
 from .screen_bus_manager import ScreenBusManager
-from .screen import Screen
 from dicemaster_central.config import dice_config
 
 class ScreenMediaService(Node):
@@ -32,24 +30,20 @@ class ScreenMediaService(Node):
         self.spi_config = dice_config.spi_config
         self.global_config = dice_config.global_screen_config
 
-        # Create bus managers
+        # Create bus managers (now they are independent nodes)
         self.spi_buses = dice_config.active_spi_controllers
         self.bus_managers = {
-            bus_id: ScreenBusManager(bus_id, self) for bus_id in self.spi_buses
+            bus_id: ScreenBusManager(bus_id) for bus_id in self.spi_buses
         }
         for bus_manager in self.bus_managers.values():
             bus_manager.start()
 
-        # Create all screens
-        self.screens: Dict[int, Screen] = {
-            screen_config.id: Screen(
-                node=self,
-                screen_id=screen_config.id,
-                bus_manager=self.bus_managers[screen_config.bus_id],
-                using_rotation=self.global_config.auto_rotate,
-                rotation_margin=self.global_config.rotation_margin
-            ) for screen_config in self.screen_configs
-        }  # screen_id -> Screen instance
+        # Screens are now managed directly by their respective bus managers
+        # Create a lookup for routing messages to the correct bus manager
+        self.screen_to_bus_manager = {
+            screen_config.id: self.bus_managers[screen_config.bus_id] 
+            for screen_config in self.screen_configs
+        }
 
         # Processing threads
         self.running = True
@@ -65,13 +59,15 @@ class ScreenMediaService(Node):
         self.get_logger().info("ScreenMediaService initialized and ready")
 
     def _handle_media_command(self, msg):
-        """Convert a ScreenMediaCmd message into a media request and send to respective screen"""
+        """Route media command to the appropriate bus manager"""
         screen_id = msg.screen_id
-        if screen_id not in self.screens.keys():
+        if screen_id not in self.screen_to_bus_manager:
             self.get_logger().error(f"Invalid screen ID {screen_id} in media command")
             return
-        screen = self.screens[screen_id]
-        screen.queue_media_request(msg)
+        
+        # Route to the appropriate bus manager
+        bus_manager = self.screen_to_bus_manager[screen_id]
+        bus_manager._handle_media_command(msg)
 
     def shutdown(self):
         """Shutdown the service"""

@@ -85,7 +85,7 @@ from dicemaster_central.hw.motion_detector import MotionDetector
 
 from dicemaster_central_msgs.msg import RawIMU, MotionDetection, IMUCalibration, NotificationRequest
 
-from .imu import BaseIMU
+from .imu_hardware import BaseIMU
 
 class IMUProcessorNode(Node):
     """ROS2 node for IMU pose estimation with motion detection"""

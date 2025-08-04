@@ -22,6 +22,33 @@
     </inertial>
   </link>
 
+  <!-- IMU link (at center of dice, aligned with base_link) -->
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/> <!-- IMU at center of dice -->
+  </joint>
+  
+  <link name="imu_link">
+    <visual>
+      <geometry>
+        <box size="0.02 0.02 0.005"/> <!-- Small IMU sensor -->
+      </geometry>
+      <material name="imu_sensor">
+        <color rgba="0.3 0.3 0.3 0.9"/> <!-- Dark gray for IMU -->
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.02 0.02 0.005"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+
   <!-- Screen 1: Top face (+Z direction, facing +X when viewed from above) -->
   <joint name="screen_1_joint" type="fixed">
     <parent link="base_link"/>

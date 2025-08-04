@@ -1,58 +1,17 @@
 """
-DiceMaster Motion Detection Module
+DiceMaster Motion Detection Node
 
-USAGE IN ROS2:
-==============
+This ROS2 node subscribes to filtered IMU data from the Madgwick filter
+and detects motion patterns including rotations and shaking.
 
-1. Import and Initialize:
-   from dicemaster_central.hw.motion_detector import MotionDetector
-   
-   motion_detector = MotionDetector(history_size=50)
+Topics:
+- Subscribes to: /imu/data (sensor_msgs/Imu) - filtered IMU data from Madgwick
+- Publishes to: /dice_hw/imu/motion (MotionDetection) - motion detection results
+- Publishes to: /dice_hw/imu/motion/* (Bool) - individual motion flags
 
-2. Update with IMU data:
-   # accel: [x, y, z] in m/s²
-   # gyro: [x, y, z] in rad/s  
-   # quaternion: [w, x, y, z]
-   motion_detector.update(accel, gyro, quaternion)
-
-3. Get motion detection results:
-   # Individual detections
-   is_rolling_pos = motion_detector.detect_rotation_x_pos()
-   is_shaking = motion_detector.detect_shaking()
-   
-   # Get all motion data at once
-   motion_summary = motion_detector.get_motion_summary()
-   
-   # Intensity values (0.0 to 1.0)
-   rotation_intensity = motion_detector.get_rotation_intensity()
-   shake_intensity = motion_detector.get_shake_intensity()
-   stillness_factor = motion_detector.get_stillness_factor()
-
-4. Example ROS2 Integration:
-   class IMUNode(Node):
-       def __init__(self):
-           super().__init__('imu_node')
-           self.motion_detector = MotionDetector()
-           
-       def imu_callback(self, msg):
-           accel = [msg.linear_acceleration.x, 
-                   msg.linear_acceleration.y, 
-                   msg.linear_acceleration.z]
-           gyro = [msg.angular_velocity.x,
-                  msg.angular_velocity.y, 
-                  msg.angular_velocity.z]
-           quat = [msg.orientation.w, msg.orientation.x,
-                  msg.orientation.y, msg.orientation.z]
-                  
-           self.motion_detector.update(accel, gyro, quat)
-           motion_data = self.motion_detector.get_motion_summary()
-           
-           # Publish motion detection results
-           motion_msg = MotionDetection()
-           motion_msg.rotation_x_pos = motion_data['rotation_x_pos']
-           motion_msg.shaking = motion_data['shaking']
-           # ... set other fields
-           self.motion_pub.publish(motion_msg)
+USAGE:
+======
+ros2 run dicemaster_central motion_detector_node
 
 MOTION TYPES DETECTED:
 =====================
@@ -63,8 +22,15 @@ MOTION TYPES DETECTED:
 - Stillness factor: How still the device is (1.0 = perfectly still)
 """
 
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Imu
+from std_msgs.msg import Bool, Header
+
 import numpy as np
 from collections import deque
+
+from dicemaster_central_msgs.msg import MotionDetection
 
 
 class MotionDetector:
@@ -74,20 +40,16 @@ class MotionDetector:
         self.history_size = history_size
         self.accel_history = deque(maxlen=history_size)
         self.gyro_history = deque(maxlen=history_size)
-        self.quat_history = deque(maxlen=history_size)
         
         # Detection thresholds
         self.rotation_threshold = 1.5  # rad/s
         self.shake_threshold = 15.0    # m/s²
-        self.shake_frequency_min = 2.0  # Hz
-        self.shake_frequency_max = 8.0  # Hz
         self.stillness_threshold = 0.5  # Combined motion threshold for stillness
         
-    def update(self, accel, gyro, quaternion):
-        """Update motion detector with new data"""
+    def update(self, accel, gyro):
+        """Update motion detector with new data (no quaternion needed)"""
         self.accel_history.append(accel.copy())
         self.gyro_history.append(gyro.copy())
-        self.quat_history.append(quaternion.copy())
         
     def detect_rotation_x_pos(self):
         """Detect +90 degree rotation around world X-axis (roll)"""
@@ -201,3 +163,106 @@ class MotionDetector:
             'shake_intensity': self.get_shake_intensity(),
             'stillness_factor': self.get_stillness_factor()
         }
+
+
+class MotionDetectorNode(Node):
+    """ROS2 Node that detects motion patterns from filtered IMU data"""
+    
+    def __init__(self):
+        super().__init__('motion_detector')
+        
+        # Initialize motion detector
+        self.motion_detector = MotionDetector(history_size=50)
+        
+        # Publishers
+        self.motion_pub = self.create_publisher(MotionDetection, '/dice_hw/imu/motion', 10)
+        
+        # Individual motion detection publishers
+        self.rotation_x_pos_pub = self.create_publisher(Bool, '/dice_hw/imu/motion/rotation_x_pos', 10)
+        self.rotation_x_neg_pub = self.create_publisher(Bool, '/dice_hw/imu/motion/rotation_x_neg', 10)
+        self.rotation_y_pos_pub = self.create_publisher(Bool, '/dice_hw/imu/motion/rotation_y_pos', 10)
+        self.rotation_y_neg_pub = self.create_publisher(Bool, '/dice_hw/imu/motion/rotation_y_neg', 10)
+        self.rotation_z_pos_pub = self.create_publisher(Bool, '/dice_hw/imu/motion/rotation_z_pos', 10)
+        self.rotation_z_neg_pub = self.create_publisher(Bool, '/dice_hw/imu/motion/rotation_z_neg', 10)
+        self.shaking_pub = self.create_publisher(Bool, '/dice_hw/imu/motion/shaking', 10)
+        
+        # Subscriber to filtered IMU data from Madgwick filter
+        self.imu_sub = self.create_subscription(
+            Imu,
+            '/imu/data',  # Filtered data from Madgwick filter
+            self.imu_callback,
+            10
+        )
+        
+        self.get_logger().info("Motion Detector Node initialized - listening to /imu/data")
+    
+    def imu_callback(self, msg):
+        """Callback for filtered IMU data from Madgwick filter"""
+        # Extract accelerometer and gyroscope data
+        accel = np.array([
+            msg.linear_acceleration.x,
+            msg.linear_acceleration.y,
+            msg.linear_acceleration.z
+        ])
+        
+        gyro = np.array([
+            msg.angular_velocity.x,
+            msg.angular_velocity.y,
+            msg.angular_velocity.z
+        ])
+        
+        # Update motion detector
+        self.motion_detector.update(accel, gyro)
+        
+        # Get motion detection results and publish
+        self._publish_motion_detection(msg.header)
+    
+    def _publish_motion_detection(self, original_header):
+        """Publish motion detection results"""
+        motion_summary = self.motion_detector.get_motion_summary()
+        
+        # Create motion detection message
+        motion_msg = MotionDetection()
+        motion_msg.header = Header()
+        motion_msg.header.stamp = self.get_clock().now().to_msg()
+        motion_msg.header.frame_id = original_header.frame_id
+        
+        motion_msg.rotation_x_positive = motion_summary['rotation_x_pos']
+        motion_msg.rotation_x_negative = motion_summary['rotation_x_neg']
+        motion_msg.rotation_y_positive = motion_summary['rotation_y_pos']
+        motion_msg.rotation_y_negative = motion_summary['rotation_y_neg']
+        motion_msg.rotation_z_positive = motion_summary['rotation_z_pos']
+        motion_msg.rotation_z_negative = motion_summary['rotation_z_neg']
+        motion_msg.shaking = motion_summary['shaking']
+        motion_msg.rotation_intensity = motion_summary['rotation_intensity']
+        motion_msg.shake_intensity = motion_summary['shake_intensity']
+        motion_msg.stillness_factor = motion_summary['stillness_factor']
+        
+        self.motion_pub.publish(motion_msg)
+        
+        # Publish individual motion flags
+        self.rotation_x_pos_pub.publish(Bool(data=motion_summary['rotation_x_pos']))
+        self.rotation_x_neg_pub.publish(Bool(data=motion_summary['rotation_x_neg']))
+        self.rotation_y_pos_pub.publish(Bool(data=motion_summary['rotation_y_pos']))
+        self.rotation_y_neg_pub.publish(Bool(data=motion_summary['rotation_y_neg']))
+        self.rotation_z_pos_pub.publish(Bool(data=motion_summary['rotation_z_pos']))
+        self.rotation_z_neg_pub.publish(Bool(data=motion_summary['rotation_z_neg']))
+        self.shaking_pub.publish(Bool(data=motion_summary['shaking']))
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    
+    node = MotionDetectorNode()
+    
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

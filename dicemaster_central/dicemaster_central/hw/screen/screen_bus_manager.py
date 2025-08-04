@@ -13,10 +13,16 @@ from queue import Empty, PriorityQueue
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
-from dicemaster_central.config import dice_config
+from rclpy.node import Node
+from dicemaster_central_msgs.msg import ScreenMediaCmd
+
+from .screen import Screen
+from .spi_device import SPIDevice
+
+from dicemaster_central.config import dice_config, ScreenConfig
 from dicemaster_central.constants import MessagePriority
 from dicemaster_central.media_typing.protocol import ProtocolMessage
-from .spi_device import SPIDevice
+
 
 @dataclass
 class QueuedMessage:
@@ -32,7 +38,7 @@ class QueuedMessage:
             return self.priority < other.priority
         return self.timestamp < other.timestamp
 
-class ScreenBusManager:
+class ScreenBusManager(Node):
     """
     Manages a single SPI bus with multiple screens.
     Handles message queuing, transmission, and GIF playback.
@@ -40,18 +46,29 @@ class ScreenBusManager:
     
     def __init__(self,
         bus_id: int,
-        node
     ):
-        self.bus_id = bus_id
-        self.node = node
+        # Initialize ROS2 node first
+        super().__init__(f'screen_bus_manager_{bus_id}')
         
+        self.bus_id = bus_id
+
         # Get configuration from hardcoded config
         self.spi_config = dice_config.spi_config
         self.global_settings = dice_config.global_screen_config
         
         # Filter screen configs for this bus
         bus_screen_configs = [cfg for cfg in dice_config.screen_configs if cfg.bus_id == bus_id]
-        self.screen_configs = {cfg.id: cfg for cfg in bus_screen_configs}
+        self.screen_configs: Dict[int, ScreenConfig] = {cfg.id: cfg for cfg in bus_screen_configs}
+
+        self.screens: Dict[int, Screen] = {
+            screen_config.id: Screen(
+                node=self,
+                screen_id=screen_config.id,
+                bus_manager=self,
+                using_rotation=self.global_settings.auto_rotate,
+                rotation_margin=self.global_settings.rotation_margin
+            ) for screen_config in self.screen_configs.values()
+        }  # screen_id -> Screen instance
         
         # SPI devices for each screen on this bus
         self.spi_devices: Dict[int, SPIDevice] = {
@@ -62,6 +79,16 @@ class ScreenBusManager:
                 verbose=False
             )
             for screen_id, screen_config in self.screen_configs.items()
+        }
+
+        self.screen_cmd_subs = {
+            screen_id: self.create_subscription(
+                ScreenMediaCmd,
+                f'/screen_{screen_id}_cmd',
+                self._handle_media_command,
+                10  # QoS depth
+            )
+            for screen_id in self.screen_configs.keys()
         }
 
         # Message queue and transmission
@@ -107,6 +134,15 @@ class ScreenBusManager:
         # Stop
         self.running = False
         self.node.get_logger().info(f"Stopped bus manager for bus {self.bus_id}")
+    
+    def _handle_media_command(self, msg: ScreenMediaCmd):
+        """Convert a ScreenMediaCmd message into a media request and send to respective screen"""
+        screen_id = msg.screen_id
+        if screen_id not in self.screens.keys():
+            self.get_logger().error(f"Invalid screen ID {screen_id} in media command")
+            return
+        screen = self.screens[screen_id]
+        screen.queue_media_request(msg)
 
     def queue_protocol_message(self, screen_id: int, message: ProtocolMessage, priority: int = MessagePriority.NORMAL) -> bool:
         """Queue a protocol message for transmission"""
@@ -194,3 +230,45 @@ class ScreenBusManager:
         stats['queue_size'] = self.message_queue.qsize()
         stats['screens'] = list(self.screen_configs.keys())
         return stats
+
+    def destroy_node(self):
+        """Override destroy to ensure proper cleanup"""
+        self.stop()
+        super().destroy_node()
+
+
+def main(args=None):
+    """Main function for standalone screen bus manager"""
+    import sys
+    
+    if len(sys.argv) < 2:
+        print("Usage: screen_bus_manager.py <bus_id>")
+        sys.exit(1)
+    
+    try:
+        bus_id = int(sys.argv[1])
+    except ValueError:
+        print(f"Invalid bus_id: {sys.argv[1]}. Must be an integer.")
+        sys.exit(1)
+    
+    import rclpy
+    rclpy.init(args=args)
+    
+    try:
+        bus_manager = ScreenBusManager(bus_id)
+        bus_manager.start()
+        
+        bus_manager.get_logger().info(f"Starting ScreenBusManager for bus {bus_id}")
+        rclpy.spin(bus_manager)
+        
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"Error running screen bus manager for bus {bus_id}: {e}")
+    finally:
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

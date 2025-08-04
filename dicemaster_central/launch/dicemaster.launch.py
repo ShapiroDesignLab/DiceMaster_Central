@@ -97,7 +97,7 @@ def generate_launch_description():
     launch_nodes.append(
         Node(
             package='dicemaster_central',
-            executable='imu_node',
+            executable='imu_hardware_node',
             name='dice_imu_node',
             parameters=[{
                 'calibration_duration': LaunchConfiguration('calibration_duration'),

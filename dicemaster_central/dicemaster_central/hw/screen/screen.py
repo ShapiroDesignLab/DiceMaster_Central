@@ -6,15 +6,14 @@ This module handles communication with peripheral ESP32 boards through a chosen 
 
 Protocols: see https://docs.google.com/document/d/1ovbKFz1-aYnTLMupWtqQHsDRdrbPbAs7edm_ehnVuko
 """
+from __future__ import annotations
+
 import threading
-import time
-import numpy as np
 from queue import Queue, Empty
 from typing import Dict, Optional, Any
-import tf2_ros
 
 # Import the new message type
-from dicemaster_central_msgs.msg import ScreenMediaCmd
+from dicemaster_central_msgs.msg import ScreenMediaCmd, ScreenPose
 from dicemaster_central.config import dice_config
 from dicemaster_central.constants import (
     MessagePriority, RequestStatus, ContentType, GIF_FRAME_TIME,
@@ -23,18 +22,17 @@ from dicemaster_central.constants import (
 from dicemaster_central.media_typing.media_types import (
     TextGroup, Image as MediaImage, GIF
 )
-from dicemaster_central.hw.screen import ScreenBusManager
 
 SPI_CHUNK_SIZE = dice_config.spi_config.max_buffer_size
 
 
 class Screen:
     """
-    Screen class that handles media processing, GIF playback, and optional orientation management.
+    Screen class that handles media processing, GIF playback, and chassis-driven rotation.
     
     This class manages a single screen device and provides:
     - Media processing (text, images, GIFs) in a separate thread
-    - Optional automatic rotation tracking using TF2 transforms
+    - Automatic rotation updates from chassis orientation system
     - GIF playback with frame timing
     - Orientation-aware content re-transmission
     
@@ -42,22 +40,19 @@ class Screen:
         node: ROS2 node for logging and timer creation
         screen_id: Unique identifier for this screen
         bus_manager: Bus manager for sending protocol messages
-        using_rotation: Whether to enable automatic rotation tracking (default: False)
-        rotation_margin: Threshold for rotation changes in meters (default: 0.2)
+        using_rotation: Whether to enable automatic rotation tracking (default: True)
     """
     def __init__(self,
         node, 
         screen_id: int,
-        bus_manager,
-        using_rotation=False,
-        rotation_margin: float = 0.2
+        bus_manager_queue,
+        using_rotation=True
     ):
         # Basic properties
         self.screen_id = screen_id
         self.node = node
-        self.bus_manager: ScreenBusManager = bus_manager
+        self.bus_manager_queue = bus_manager_queue
         self.using_rotation = using_rotation
-        self.rotation_margin = rotation_margin
         self.current_rotation = Rotation.ROTATION_0
         
         # Content management
@@ -65,7 +60,7 @@ class Screen:
         self.request_counter = 0
         self.request_status: Dict[int, RequestStatus] = {}
         self.last_content: Any = None  # Can be TextBatchMessage, List of messages, or List of Lists for GIF
-        self.last_content_type: Optional[str] = None
+        self.last_content_type: Optional[ContentType] = None
         self.running = True
 
         # Content processing thread
@@ -79,51 +74,60 @@ class Screen:
         self.gif_active = False
         self.gif_lock = threading.Lock()
         
-        # Rotation tracking setup (optional)
-        self.tf_buffer = None
-        self.tf_listener = None
-        self.edge_frames = None
-        self.orientation_timer = None
-        
+        # Chassis pose subscription for rotation updates
+        self.pose_subscription = None
         if using_rotation:
-            self._setup_rotation_tracking()
+            self._setup_pose_subscription()
 
-        self.node.get_logger().info(f"Screen {screen_id} initialized {' with rotation tracking' if using_rotation else ''}")
+        self.node.get_logger().info(f"Screen {screen_id} initialized {' with chassis rotation tracking' if using_rotation else ''}")
 
     def __repr__(self):
         return f"Screen(screen_id={self.screen_id}, rotation={self.current_rotation}, rotation_enabled={self.using_rotation})"
 
-    def _setup_rotation_tracking(self):
-        """Setup TF2 and orientation tracking for automatic rotation detection"""
+    def _setup_pose_subscription(self):
+        """Setup subscription to chassis pose topic for rotation updates"""
         try:
-            self.tf_buffer = tf2_ros.Buffer()
-            self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self.node)
-            
-            # Screen edge frame names for orientation detection
-            self.edge_frames = [
-                f'screen_{self.screen_id}_edge_top',
-                f'screen_{self.screen_id}_edge_right', 
-                f'screen_{self.screen_id}_edge_bottom',
-                f'screen_{self.screen_id}_edge_left'
-            ]
-            
-            # Create timer for orientation checking at 10Hz
-            self.orientation_timer = self.node.create_timer(0.1, self.check_orientation)
-            self.node.get_logger().info(f"Rotation tracking enabled for screen {self.screen_id}")
+            topic_name = f'/chassis/screen_{self.screen_id}_pose'
+            self.pose_subscription = self.node.create_subscription(
+                ScreenPose,
+                topic_name,
+                self._pose_callback,
+                10
+            )
+            self.node.get_logger().info(f"Screen {self.screen_id} subscribed to {topic_name}")
             
         except Exception as e:
-            self.node.get_logger().warn(f"Failed to setup rotation tracking for screen {self.screen_id}: {e}")
-            self.tf_buffer = None
-            self.tf_listener = None
-            self.edge_frames = None
-            self.orientation_timer = None
+            self.node.get_logger().warn(f"Failed to setup pose subscription for screen {self.screen_id}: {e}")
+            self.pose_subscription = None
+
+    def _pose_callback(self, msg: ScreenPose):
+        """Callback for chassis pose updates"""
+        if msg.screen_id != self.screen_id:
+            return
+            
+        new_rotation = Rotation(msg.rotation)
+        
+        # Check if rotation changed
+        if new_rotation != self.current_rotation:
+            old_rotation = self.current_rotation
+            self.current_rotation = new_rotation
+            
+            self.node.get_logger().info(
+                f'Screen {self.screen_id} rotation updated from {old_rotation} to {new_rotation} '
+                f'(up_alignment: {msg.up_alignment:.3f}, facing_up: {msg.is_facing_up})'
+            )
+            
+            # Re-send current content with new rotation
+            if self.last_content is not None:
+                self._resend_with_rotation()
 
     def destroy(self):
         """Clean up resources"""
         self.running = False
         self.destroy_gif_replay()
-        if self.orientation_timer:
-            self.orientation_timer.cancel()
+        if self.pose_subscription:
+            # Subscription cleanup is handled by ROS2 automatically
+            pass
         if self.processing_thread.is_alive():
             self.processing_thread.join(timeout=2.0)
         self.node.get_logger().info(f'Screen {self.screen_id} destroyed')
@@ -149,7 +153,7 @@ class Screen:
         if not isinstance(msgs, list):
             msgs = [msgs]
         for msg in msgs:
-            self.bus_manager.queue_protocol_message(self.screen_id, msg, priority)
+            self.bus_manager_queue.put((self.screen_id, msg, priority))
 
     def _get_next_request_id(self) -> int:
         """Generate next request ID"""
@@ -221,7 +225,7 @@ class Screen:
             
             # Store content for re-orientation
             self.last_content = messages
-            self.last_content_type = 'image'
+            self.last_content_type = ContentType.IMAGE
             
             # Push all messages to bus manager
             self.node.get_logger().info("Pushed image prompt to bus")
@@ -250,7 +254,7 @@ class Screen:
             
             # Store content for re-orientation and setup GIF playback
             self.last_content = frame_message_lists
-            self.last_content_type = 'gif'
+            self.last_content_type = ContentType.GIF
             
             # Setup GIF replay
             self.node.get_logger().info("GIF replay setup")
@@ -336,52 +340,8 @@ class Screen:
             self.gif_frame_index = 0
 
     # -----------------------------------
-    # Rotation and Orientation Management
+    # Rotation Management
     # -----------------------------------
-    def check_orientation(self) -> None:
-        """Check current orientation and trigger rotation if needed"""
-        # Skip if rotation tracking is not enabled
-        if not self.using_rotation or self.tf_buffer is None or self.edge_frames is None:
-            return
-            
-        try:
-            # Get transform from base_link to each edge frame
-            edge_vectors = []
-            current_time = self.node.get_clock().now()
-
-            for edge_frame in self.edge_frames:
-                try:
-                    transform = self.tf_buffer.lookup_transform(
-                        'base_link', edge_frame, current_time, timeout=tf2_ros.Duration(seconds=0.1)
-                    )
-                    # Extract Z component of the edge position
-                    z_component = transform.transform.translation.z
-                    edge_vectors.append(z_component)
-                except Exception:
-                    # If we can't get transform, skip this iteration
-                    return
-                    
-            if len(edge_vectors) != 4:
-                return
-                
-            # Determine which edge is most "up" (highest Z component)
-            max_z_idx = np.argmax(edge_vectors)
-            max_z_value = edge_vectors[max_z_idx]
-            
-            # Check if this edge is significantly more "up" than current top
-            current_top_idx = (4 - self.current_rotation) % 4
-            current_top_z = edge_vectors[current_top_idx]
-            
-            # If the highest edge is different and exceeds margin, rotate
-            if (max_z_idx != current_top_idx and 
-                max_z_value - current_top_z > self.rotation_margin):
-                
-                new_rotation = Rotation((4 - max_z_idx) % 4)
-                self.set_rotation(new_rotation)
-                        
-        except Exception as e:
-            self.node.get_logger().debug(f'Error in orientation check for screen {self.screen_id}: {str(e)}')
-
     def set_rotation(self, rotation: Rotation):
         """Manually set screen rotation and update content"""
         if self.current_rotation == rotation:
@@ -403,18 +363,18 @@ class Screen:
             
         try:
             if self.last_content_type == ContentType.TEXT:
-                # For text messages, update rotation directly
+                # For text messages, update rotation and resend
                 if hasattr(self.last_content, 'rotation'):
                     self.last_content.rotation = self.current_rotation
                     self.push_to_bus_manager(self.last_content, MessagePriority.HIGH)
-            elif self.last_content_type == 'image':
+            elif self.last_content_type == ContentType.IMAGE:
                 # For image messages, only the start message has rotation
                 if isinstance(self.last_content, list) and len(self.last_content) > 0:
                     start_msg = self.last_content[0]  # First message should be ImageStartMessage
                     if hasattr(start_msg, 'rotation'):
                         start_msg.rotation = self.current_rotation
                     self.push_to_bus_manager(self.last_content, MessagePriority.HIGH)
-            elif self.last_content_type == 'gif':
+            elif self.last_content_type == ContentType.GIF:
                 # For GIF, update rotation in all frame start messages and restart playback
                 if isinstance(self.last_content, list):
                     for frame_messages in self.last_content:
@@ -427,57 +387,26 @@ class Screen:
         except Exception as e:
             self.node.get_logger().error(f"Error re-sending content with rotation: {e}")
 
-    def update_text_orientation(self, msg):
-        """Update text message orientation and resend"""
-        if hasattr(msg, 'rotation'):
-            msg.rotation = self.current_rotation
-            self.push_to_bus_manager(msg, MessagePriority.HIGH)
-
-    def update_image_orientation(self, msgs):
-        """Update image messages orientation and resend"""
-        if isinstance(msgs, list) and len(msgs) > 0:
-            # Only the first message (ImageStartMessage) has rotation
-            start_msg = msgs[0]
-            if hasattr(start_msg, 'rotation'):
-                start_msg.rotation = self.current_rotation
-            self.push_to_bus_manager(msgs, MessagePriority.HIGH)
-
-    def update_gif_orientation(self, frame_message_lists):
-        """Update GIF frame messages orientation"""
-        if isinstance(frame_message_lists, list):
-            # Update rotation in all frame start messages
-            for frame_messages in frame_message_lists:
-                if isinstance(frame_messages, list) and len(frame_messages) > 0:
-                    start_msg = frame_messages[0]  # First message should be ImageStartMessage
-                    if hasattr(start_msg, 'rotation'):
-                        start_msg.rotation = self.current_rotation
-            
-            # Restart GIF playback with updated messages
-            self.setup_gif_replay(frame_message_lists)
-
     def enable_rotation_tracking(self):
-        """Enable rotation tracking for this screen"""
+        """Enable chassis-driven rotation tracking for this screen"""
         if not self.using_rotation:
             self.using_rotation = True
-            self._setup_rotation_tracking()
+            self._setup_pose_subscription()
+            self.node.get_logger().info(f"Chassis rotation tracking enabled for screen {self.screen_id}")
 
     def disable_rotation_tracking(self):
-        """Disable rotation tracking for this screen"""
+        """Disable chassis-driven rotation tracking for this screen"""
         if self.using_rotation:
             self.using_rotation = False
-            if self.orientation_timer:
-                self.orientation_timer.cancel()
-                self.orientation_timer = None
-            self.tf_buffer = None
-            self.tf_listener = None
-            self.edge_frames = None
-            self.node.get_logger().info(f"Rotation tracking disabled for screen {self.screen_id}")
+            if self.pose_subscription:
+                # Subscription cleanup handled by ROS2 automatically
+                self.pose_subscription = None
+            self.node.get_logger().info(f"Chassis rotation tracking disabled for screen {self.screen_id}")
 
     def get_rotation_status(self) -> dict:
         """Get current rotation status information"""
         return {
             'using_rotation': self.using_rotation,
             'current_rotation': self.current_rotation,
-            'rotation_margin': self.rotation_margin,
-            'tf_tracking_active': self.orientation_timer is not None
+            'chassis_pose_active': self.pose_subscription is not None
         }
