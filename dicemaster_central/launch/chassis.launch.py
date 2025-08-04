@@ -45,6 +45,11 @@ def generate_launch_description():
             default_value='false',
             description='Automatically start RViz for visualization'
         ),
+        DeclareLaunchArgument(
+            'enable_screen_orientation',
+            default_value='true',
+            description='Enable screen orientation detection and publishing'
+        ),
     ])
     
     # Dice Chassis Node
@@ -58,6 +63,7 @@ def generate_launch_description():
                 'imu_frame': LaunchConfiguration('imu_frame'),
                 'world_frame': LaunchConfiguration('world_frame'),
                 'publish_rate': LaunchConfiguration('publish_rate'),
+                'enable_screen_orientation': LaunchConfiguration('enable_screen_orientation'),
                 'imu_topic': '/imu/data',
                 'alternative_imu_topic': '/data/imu',
             }],

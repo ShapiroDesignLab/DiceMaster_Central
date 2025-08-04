@@ -13,9 +13,23 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import threading
 import time
-from dicemaster_central_msgs.msg import ChassisOrientation, ScreenPose
-from dicemaster_central.config import dice_config
-from dicemaster_central.constants import Rotation as ConfigRotation
+
+# Conditional imports for optional screen orientation functionality
+ChassisOrientation = None
+ScreenPose = None
+dice_config = None
+ConfigRotation = None
+
+def _import_screen_orientation_deps():
+    """Import screen orientation dependencies if needed"""
+    global ChassisOrientation, ScreenPose, dice_config, ConfigRotation
+    try:
+        from dicemaster_central_msgs.msg import ChassisOrientation, ScreenPose
+        from dicemaster_central.config import dice_config
+        from dicemaster_central.constants import Rotation as ConfigRotation
+        return True
+    except ImportError as e:
+        return False
 
 class ChassisNode(Node):
     """
@@ -40,6 +54,7 @@ class ChassisNode(Node):
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('alternative_imu_topic', '/data/imu')
         self.declare_parameter('rotation_threshold', 0.7)  # Stickiness factor for rotation changes
+        self.declare_parameter('enable_screen_orientation', True)  # Enable screen orientation publishing
         
         # Get parameters
         self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
@@ -50,28 +65,43 @@ class ChassisNode(Node):
         self.imu_topic = self.get_parameter('imu_topic').get_parameter_value().string_value
         self.alt_imu_topic = self.get_parameter('alternative_imu_topic').get_parameter_value().string_value
         self.rotation_threshold = self.get_parameter('rotation_threshold').get_parameter_value().double_value
+        self.enable_screen_orientation = self.get_parameter('enable_screen_orientation').get_parameter_value().bool_value
+        
+        # Initialize screen orientation functionality if enabled
+        self.screen_orientation_enabled = False
+        if self.enable_screen_orientation:
+            if _import_screen_orientation_deps():
+                self.screen_orientation_enabled = True
+                self.get_logger().info('Screen orientation functionality enabled')
+            else:
+                self.get_logger().warn('Screen orientation functionality requested but dependencies not available')
+        else:
+            self.get_logger().info('Screen orientation functionality disabled')
         
         # Load URDF (removed - handled by robot_state_publisher)
         # self.robot_description = self._load_urdf()
         
-        # Publishers for orientation and screen poses
-        self.chassis_orientation_pub = self.create_publisher(
-            ChassisOrientation, 
-            '/chassis/orientation', 
-            10
-        )
-        
-        # Screen pose publishers - create one for each screen
-        self.screen_pose_publishers = {}
-        for screen_config in dice_config.screen_configs:
-            screen_id = screen_config.id  # Config now uses 1-6 directly
-            topic_name = f'/chassis/screen_{screen_id}_pose'
-            self.screen_pose_publishers[screen_id] = self.create_publisher(
-                ScreenPose,
-                topic_name,
+        # Publishers for orientation and screen poses (only if enabled)
+        if self.screen_orientation_enabled:
+            self.chassis_orientation_pub = self.create_publisher(
+                ChassisOrientation, 
+                '/chassis/orientation', 
                 10
             )
-        
+            
+            # Screen pose publishers - create one for each screen
+            self.screen_pose_publishers = {}
+            for screen_config in dice_config.screen_configs:
+                screen_id = screen_config.id  # Config now uses 1-6 directly
+                topic_name = f'/chassis/screen_{screen_id}_pose'
+                self.screen_pose_publishers[screen_id] = self.create_publisher(
+                    ScreenPose,
+                    topic_name,
+                    10
+                )
+        else:
+            self.chassis_orientation_pub = None
+            self.screen_pose_publishers = {}
         # TF2 setup
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -91,13 +121,17 @@ class ChassisNode(Node):
         self.last_pose_time = None
         self.imu_connected = False
         
-        # Screen orientation state tracking with stickiness
-        self.screen_rotations = {}  # screen_id -> current rotation
-        self.screen_up_alignments = {}  # screen_id -> last up_alignment value
-        for screen_config in dice_config.screen_configs:
-            screen_id = screen_config.id  # Config now uses 1-6 directly
-            self.screen_rotations[screen_id] = screen_config.default_orientation
-            self.screen_up_alignments[screen_id] = -1.0  # Start with fully down
+        # Screen orientation state tracking with stickiness (only if enabled)
+        if self.screen_orientation_enabled:
+            self.screen_rotations = {}  # screen_id -> current rotation
+            self.screen_up_alignments = {}  # screen_id -> last up_alignment value
+            for screen_config in dice_config.screen_configs:
+                screen_id = screen_config.id  # Config now uses 1-6 directly
+                self.screen_rotations[screen_id] = screen_config.default_orientation
+                self.screen_up_alignments[screen_id] = -1.0  # Start with fully down
+        else:
+            self.screen_rotations = {}
+            self.screen_up_alignments = {}
         
         # Subscribe to IMU data (try multiple topics)
         self.imu_sub = self.create_subscription(
@@ -126,8 +160,11 @@ class ChassisNode(Node):
         # Timer for publishing transforms (50Hz)
         self.timer = self.create_timer(1.0/self.publish_rate, self.timer_callback)
         
-        # Timer for orientation detection (10Hz)
-        self.orientation_timer = self.create_timer(1.0/self.orientation_rate, self.orientation_callback)
+        # Timer for orientation detection (10Hz, only if screen orientation is enabled)
+        if self.screen_orientation_enabled:
+            self.orientation_timer = self.create_timer(1.0/self.orientation_rate, self.orientation_callback)
+        else:
+            self.orientation_timer = None
         
         # Publish static transforms (IMU to base_link)
         self._publish_static_transforms()
@@ -139,6 +176,7 @@ class ChassisNode(Node):
         self.get_logger().info(f'Base frame: {self.base_frame}')
         self.get_logger().info(f'IMU frame: {self.imu_frame}')
         self.get_logger().info(f'IMU topics: {self.imu_topic}, {self.alt_imu_topic}')
+        self.get_logger().info(f'Screen orientation: {"enabled" if self.screen_orientation_enabled else "disabled"}')
         self.get_logger().info('Using default pose until IMU data is received')
         
     def _publish_static_transforms(self):
@@ -208,36 +246,42 @@ class ChassisNode(Node):
             current_pose = self.current_pose
             pose_time = self.last_pose_time
         
-        if pose_time is None:
-            # No pose data received yet
-            return
-        
-        # Check if pose data is recent (within 1 second)
-        if time.time() - pose_time > 1.0:
-            self.get_logger().warn('IMU pose data is stale', throttle_duration_sec=5.0)
-            return
-        
-        # Publish transform from world to base_link
+        # Always publish the world to base_link transform to ensure world frame exists
         transform = TransformStamped()
         transform.header.stamp = self.get_clock().now().to_msg()
         transform.header.frame_id = self.world_frame
         transform.child_frame_id = self.base_frame
         
-        # Position (IMU only provides orientation, so position is fixed)
+        # Position (dice position is always at origin)
         transform.transform.translation.x = current_pose.position.x
         transform.transform.translation.y = current_pose.position.y
         transform.transform.translation.z = current_pose.position.z
         
-        # Orientation from IMU
-        transform.transform.rotation.x = current_pose.orientation.x
-        transform.transform.rotation.y = current_pose.orientation.y
-        transform.transform.rotation.z = current_pose.orientation.z
-        transform.transform.rotation.w = current_pose.orientation.w
+        # Use current orientation if available, otherwise use identity
+        if pose_time is not None and (time.time() - pose_time <= 1.0):
+            # Use live IMU orientation
+            transform.transform.rotation.x = current_pose.orientation.x
+            transform.transform.rotation.y = current_pose.orientation.y
+            transform.transform.rotation.z = current_pose.orientation.z
+            transform.transform.rotation.w = current_pose.orientation.w
+        else:
+            # Use identity orientation (no rotation) when no IMU data
+            transform.transform.rotation.x = 0.0
+            transform.transform.rotation.y = 0.0
+            transform.transform.rotation.z = 0.0
+            transform.transform.rotation.w = 1.0
+            
+            # Log warning if pose data is stale (but not on first run)
+            if pose_time is not None:
+                self.get_logger().warn('Using default orientation - IMU pose data is stale', throttle_duration_sec=5.0)
         
         self.tf_broadcaster.sendTransform(transform)
     
     def orientation_callback(self):
         """Timer callback for orientation detection and publishing (10Hz)"""
+        if not self.screen_orientation_enabled:
+            return
+            
         with self.pose_lock:
             current_pose = self.current_pose
             pose_time = self.last_pose_time
@@ -296,6 +340,9 @@ class ChassisNode(Node):
     
     def _calculate_all_screen_orientations(self, pose):
         """Calculate orientations for all screens based on current pose"""
+        if not self.screen_orientation_enabled:
+            return []
+            
         # Convert quaternion to rotation matrix
         q = pose.orientation
         r = R.from_quat([q.x, q.y, q.z, q.w])
@@ -337,6 +384,9 @@ class ChassisNode(Node):
     
     def _calculate_screen_rotation(self, orientation, screen_id):
         """Calculate the rotation needed for a screen based on gravity direction and default orientation"""
+        if not self.screen_orientation_enabled:
+            return 0
+            
         # Get the screen's configuration
         screen_config = None
         for config in dice_config.screen_configs:
@@ -365,6 +415,8 @@ class ChassisNode(Node):
     def destroy_node(self):
         """Clean shutdown"""
         self.get_logger().info('Shutting down chassis node')
+        if hasattr(self, 'orientation_timer') and self.orientation_timer is not None:
+            self.orientation_timer.cancel()
         super().destroy_node()
 
 

@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  
+  <!-- Screen component macro -->
+  <xacro:macro name="screen_component" params="screen_id color_r color_g color_b">
+    
+    <!-- Main screen link -->
+    <link name="screen_${screen_id}_link">
+      <visual>
+        <geometry>
+          <box size="0.095 0.095 0.002"/> <!-- 3.74 inches screen, 2mm thick -->
+        </geometry>
+        <material name="screen_${screen_id}_material">
+          <color rgba="${color_r} ${color_g} ${color_b} 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="0.095 0.095 0.002"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Camera frame for image projection -->
+    <joint name="screen_${screen_id}_camera_joint" type="fixed">
+      <parent link="screen_${screen_id}_link"/>
+      <child link="screen_${screen_id}_camera_frame"/>
+      <origin xyz="0 0 0.01" rpy="0 0 0"/> <!-- 1cm above screen surface -->
+    </joint>
+    
+    <link name="screen_${screen_id}_camera_frame"/>
+
+    <!-- Edge detection frames for auto-rotation -->
+    <!-- Top edge (+X direction in screen local frame) -->
+    <joint name="screen_${screen_id}_edge_top_joint" type="fixed">
+      <parent link="screen_${screen_id}_link"/>
+      <child link="screen_${screen_id}_edge_top"/>
+      <origin xyz="0.0475 0 0.001" rpy="0 0 0"/>
+    </joint>
+    <link name="screen_${screen_id}_edge_top"/>
+    
+    <!-- Right edge (+Y direction in screen local frame) -->
+    <joint name="screen_${screen_id}_edge_right_joint" type="fixed">
+      <parent link="screen_${screen_id}_link"/>
+      <child link="screen_${screen_id}_edge_right"/>
+      <origin xyz="0 0.0475 0.001" rpy="0 0 0"/>
+    </joint>
+    <link name="screen_${screen_id}_edge_right"/>
+    
+    <!-- Bottom edge (-X direction in screen local frame) -->
+    <joint name="screen_${screen_id}_edge_bottom_joint" type="fixed">
+      <parent link="screen_${screen_id}_link"/>
+      <child link="screen_${screen_id}_edge_bottom"/>
+      <origin xyz="-0.0475 0 0.001" rpy="0 0 0"/>
+    </joint>
+    <link name="screen_${screen_id}_edge_bottom"/>
+    
+    <!-- Left edge (-Y direction in screen local frame) -->
+    <joint name="screen_${screen_id}_edge_left_joint" type="fixed">
+      <parent link="screen_${screen_id}_link"/>
+      <child link="screen_${screen_id}_edge_left"/>
+      <origin xyz="0 -0.0475 0.001" rpy="0 0 0"/>
+    </joint>
+    <link name="screen_${screen_id}_edge_left"/>
+
+  </xacro:macro>
+
+</robot>

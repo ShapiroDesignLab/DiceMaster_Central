@@ -48,14 +48,161 @@ Visualization Manager:
       Enabled: true
       Frame Timeout: 15
       Frames:
-        All Enabled: true
-      Marker Scale: 0.3
+        All Enabled: false
+        base_link:
+          Value: true
+        imu_link:
+          Value: false
+        screen_1_camera_frame:
+          Value: false
+        screen_1_edge_bottom:
+          Value: true
+        screen_1_edge_left:
+          Value: false
+        screen_1_edge_right:
+          Value: false
+        screen_1_edge_top:
+          Value: false
+        screen_1_link:
+          Value: true
+        screen_2_camera_frame:
+          Value: false
+        screen_2_edge_bottom:
+          Value: true
+        screen_2_edge_left:
+          Value: false
+        screen_2_edge_right:
+          Value: false
+        screen_2_edge_top:
+          Value: false
+        screen_2_link:
+          Value: true
+        screen_3_camera_frame:
+          Value: false
+        screen_3_edge_bottom:
+          Value: true
+        screen_3_edge_left:
+          Value: false
+        screen_3_edge_right:
+          Value: false
+        screen_3_edge_top:
+          Value: false
+        screen_3_link:
+          Value: true
+        screen_4_camera_frame:
+          Value: false
+        screen_4_edge_bottom:
+          Value: true
+        screen_4_edge_left:
+          Value: false
+        screen_4_edge_right:
+          Value: false
+        screen_4_edge_top:
+          Value: false
+        screen_4_link:
+          Value: true
+        screen_5_camera_frame:
+          Value: false
+        screen_5_edge_bottom:
+          Value: true
+        screen_5_edge_left:
+          Value: false
+        screen_5_edge_right:
+          Value: false
+        screen_5_edge_top:
+          Value: false
+        screen_5_link:
+          Value: true
+        screen_6_camera_frame:
+          Value: false
+        screen_6_edge_bottom:
+          Value: true
+        screen_6_edge_left:
+          Value: false
+        screen_6_edge_right:
+          Value: false
+        screen_6_edge_top:
+          Value: false
+        screen_6_link:
+          Value: true
+        world:
+          Value: false
+      Marker Scale: 0.2
       Name: TF
       Show Arrows: true
-      Show Axes: true
-      Show Names: true
+      Show Axes: false
+      Show Names: false
       Tree:
-        {}
+        world:
+          base_link:
+            imu_link:
+              {}
+            screen_1_link:
+              screen_1_camera_frame:
+                {}
+              screen_1_edge_bottom:
+                {}
+              screen_1_edge_left:
+                {}
+              screen_1_edge_right:
+                {}
+              screen_1_edge_top:
+                {}
+            screen_2_link:
+              screen_2_camera_frame:
+                {}
+              screen_2_edge_bottom:
+                {}
+              screen_2_edge_left:
+                {}
+              screen_2_edge_right:
+                {}
+              screen_2_edge_top:
+                {}
+            screen_3_link:
+              screen_3_camera_frame:
+                {}
+              screen_3_edge_bottom:
+                {}
+              screen_3_edge_left:
+                {}
+              screen_3_edge_right:
+                {}
+              screen_3_edge_top:
+                {}
+            screen_4_link:
+              screen_4_camera_frame:
+                {}
+              screen_4_edge_bottom:
+                {}
+              screen_4_edge_left:
+                {}
+              screen_4_edge_right:
+                {}
+              screen_4_edge_top:
+                {}
+            screen_5_link:
+              screen_5_camera_frame:
+                {}
+              screen_5_edge_bottom:
+                {}
+              screen_5_edge_left:
+                {}
+              screen_5_edge_right:
+                {}
+              screen_5_edge_top:
+                {}
+            screen_6_link:
+              screen_6_camera_frame:
+                {}
+              screen_6_edge_bottom:
+                {}
+              screen_6_edge_left:
+                {}
+              screen_6_edge_right:
+                {}
+              screen_6_edge_top:
+                {}
       Update Interval: 0
       Value: true
     - Alpha: 1
