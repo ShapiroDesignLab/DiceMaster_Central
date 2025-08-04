@@ -1,46 +1,69 @@
 """
-This configures the ROS robot loading with dice.urdf, and subscribes to /dice_hw/imu/pose for the pose of the core of the dice. The remaining frames will need to be inferred from the tf2 transformation automatically for other nodes such as screen orientation detection. 
+Dice chassis node for managing robot pose transformations and screen orientation detection.
+Subscribes to IMU data and publishes TF transforms and screen orientation messages.
 """
 
 import rclpy
 from rclpy.node import Node
 import rclpy.logging
+import rclpy.duration
 from geometry_msgs.msg import Pose, TransformStamped
 from sensor_msgs.msg import Imu
 import tf2_ros
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 import numpy as np
-from scipy.spatial.transform import Rotation as R
 import threading
 import time
 
-# Conditional imports for optional screen orientation functionality
+# Debugging for macos
+# from config_copy import dice_config
+# from constants_copy import Rotation as ConfigRotation
+
+from dicemaster_central.constants import Rotation as ConfigRotation
+from dicemaster_central.config import dice_config
+
+# Conditional imports for ROS message types only
 ChassisOrientation = None
 ScreenPose = None
-dice_config = None
-ConfigRotation = None
 
-def _import_screen_orientation_deps():
-    """Import screen orientation dependencies if needed"""
-    global ChassisOrientation, ScreenPose, dice_config, ConfigRotation
+def _import_ros_message_deps():
+    """Import ROS message dependencies if needed"""
+    global ChassisOrientation, ScreenPose
     try:
         from dicemaster_central_msgs.msg import ChassisOrientation, ScreenPose
-        from dicemaster_central.config import dice_config
-        from dicemaster_central.constants import Rotation as ConfigRotation
         return True
     except ImportError as e:
         return False
 
 class ChassisNode(Node):
     """
-    ROS2 node that manages the dice robot chassis, loads URDF, and handles pose transformations.
+    ROS2 node that manages the dice robot chassis and handles pose transformations.
     
     This node:
-    1. Loads the dice.urdf robot description
-    2. Subscribes to /dice_hw/imu/pose for robot orientation
-    3. Publishes TF transformations for all robot frames
-    4. Provides services for querying robot state
+    1. Subscribes to IMU data for robot orientation
+    2. Publishes TF transformations for all robot frames
+    3. Publishes screen orientation messages based on tf frame positions
     """
+    
+    # Screen color mapping based on URDF
+    SCREEN_COLORS = {
+        1: "Red",
+        2: "Green",
+        3: "Blue",
+        4: "Yellow",
+        5: "Magenta",
+        6: "Cyan"
+    }
+    SCREEN_ROTATIONS = {
+        0: "bottom",
+        1: "right",
+        2: "top",
+        3: "left"
+    }
+    
+    def _get_screen_color_name(self, screen_id):
+        """Get the color name for a screen ID"""
+        return self.SCREEN_COLORS.get(screen_id, "Unknown")
     
     def __init__(self):
         super().__init__('dice_chassis_node')
@@ -54,7 +77,7 @@ class ChassisNode(Node):
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('alternative_imu_topic', '/data/imu')
         self.declare_parameter('rotation_threshold', 0.7)  # Stickiness factor for rotation changes
-        self.declare_parameter('enable_screen_orientation', True)  # Enable screen orientation publishing
+        self.declare_parameter('publish_to_topics', True)  # Publish to ROS topics vs just logging
         
         # Get parameters
         self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
@@ -65,40 +88,32 @@ class ChassisNode(Node):
         self.imu_topic = self.get_parameter('imu_topic').get_parameter_value().string_value
         self.alt_imu_topic = self.get_parameter('alternative_imu_topic').get_parameter_value().string_value
         self.rotation_threshold = self.get_parameter('rotation_threshold').get_parameter_value().double_value
-        self.enable_screen_orientation = self.get_parameter('enable_screen_orientation').get_parameter_value().bool_value
+        self.publish_to_topics = self.get_parameter('publish_to_topics').get_parameter_value().bool_value
         
-        # Initialize screen orientation functionality if enabled
-        self.screen_orientation_enabled = False
-        if self.enable_screen_orientation:
-            if _import_screen_orientation_deps():
-                self.screen_orientation_enabled = True
-                self.get_logger().info('Screen orientation functionality enabled')
-            else:
-                self.get_logger().warn('Screen orientation functionality requested but dependencies not available')
-        else:
-            self.get_logger().info('Screen orientation functionality disabled')
-        
-        # Load URDF (removed - handled by robot_state_publisher)
-        # self.robot_description = self._load_urdf()
-        
-        # Publishers for orientation and screen poses (only if enabled)
-        if self.screen_orientation_enabled:
-            self.chassis_orientation_pub = self.create_publisher(
-                ChassisOrientation, 
-                '/chassis/orientation', 
-                10
-            )
-            
-            # Screen pose publishers - create one for each screen
-            self.screen_pose_publishers = {}
-            for screen_config in dice_config.screen_configs:
-                screen_id = screen_config.id  # Config now uses 1-6 directly
-                topic_name = f'/chassis/screen_{screen_id}_pose'
-                self.screen_pose_publishers[screen_id] = self.create_publisher(
-                    ScreenPose,
-                    topic_name,
+        # Initialize publishers (only if publishing is enabled)
+        if self.publish_to_topics:
+            # Import message dependencies only when publishing
+            if _import_ros_message_deps():
+                self.chassis_orientation_pub = self.create_publisher(
+                    ChassisOrientation, 
+                    '/chassis/orientation', 
                     10
                 )
+                
+                # Screen pose publishers - create one for each screen
+                self.screen_pose_publishers = {}
+                for screen_config in dice_config.screen_configs.values():
+                    screen_id = screen_config.id  # Config now uses 1-6 directly
+                    topic_name = f'/chassis/screen_{screen_id}_pose'
+                    self.screen_pose_publishers[screen_id] = self.create_publisher(
+                        ScreenPose,
+                        topic_name,
+                        10
+                    )
+            else:
+                self.get_logger().warn('Screen orientation message dependencies not available - disabling topic publishing')
+                self.chassis_orientation_pub = None
+                self.screen_pose_publishers = {}
         else:
             self.chassis_orientation_pub = None
             self.screen_pose_publishers = {}
@@ -121,17 +136,15 @@ class ChassisNode(Node):
         self.last_pose_time = None
         self.imu_connected = False
         
-        # Screen orientation state tracking with stickiness (only if enabled)
-        if self.screen_orientation_enabled:
-            self.screen_rotations = {}  # screen_id -> current rotation
-            self.screen_up_alignments = {}  # screen_id -> last up_alignment value
-            for screen_config in dice_config.screen_configs:
-                screen_id = screen_config.id  # Config now uses 1-6 directly
-                self.screen_rotations[screen_id] = screen_config.default_orientation
-                self.screen_up_alignments[screen_id] = -1.0  # Start with fully down
-        else:
-            self.screen_rotations = {}
-            self.screen_up_alignments = {}
+        # Screen orientation state tracking with stickiness (always enabled)
+        self.screen_rotations = {}  # screen_id -> current rotation
+        self.screen_up_alignments = {}  # screen_id -> last up_alignment value
+        self.screen_edge_rotations = {}  # screen_id -> last edge-based rotation
+        for screen_config in dice_config.screen_configs:
+            screen_id = screen_config.id  # Config now uses 1-6 directly
+            self.screen_rotations[screen_id] = screen_config.default_orientation
+            self.screen_up_alignments[screen_id] = -1.0  # Start with fully down
+            self.screen_edge_rotations[screen_id] = 0  # Start with 0 rotation
         
         # Subscribe to IMU data (try multiple topics)
         self.imu_sub = self.create_subscription(
@@ -141,7 +154,7 @@ class ChassisNode(Node):
             10
         )
         
-        # Alternative IMU subscriber for /data/imu topic  
+        # Alternative IMU subscriber for /data/imu topic
         self.alt_imu_sub = self.create_subscription(
             Imu,
             self.alt_imu_topic,
@@ -149,34 +162,21 @@ class ChassisNode(Node):
             10
         )
         
-        # Legacy subscriber for existing pose topic (for backward compatibility)
-        self.pose_sub = self.create_subscription(
-            Pose,
-            '/dice_hw/imu/pose',
-            self.pose_callback,
-            10
-        )
-        
         # Timer for publishing transforms (50Hz)
         self.timer = self.create_timer(1.0/self.publish_rate, self.timer_callback)
         
-        # Timer for orientation detection (10Hz, only if screen orientation is enabled)
-        if self.screen_orientation_enabled:
-            self.orientation_timer = self.create_timer(1.0/self.orientation_rate, self.orientation_callback)
-        else:
-            self.orientation_timer = None
+        # Timer for orientation detection (10Hz, always enabled)
+        self.orientation_timer = self.create_timer(1.0/self.orientation_rate, self.orientation_callback)
         
         # Publish static transforms (IMU to base_link)
         self._publish_static_transforms()
-        
-        # Robot description is now handled by robot_state_publisher
-        # self._publish_robot_description()
         
         self.get_logger().info('Dice chassis node initialized')
         self.get_logger().info(f'Base frame: {self.base_frame}')
         self.get_logger().info(f'IMU frame: {self.imu_frame}')
         self.get_logger().info(f'IMU topics: {self.imu_topic}, {self.alt_imu_topic}')
-        self.get_logger().info(f'Screen orientation: {"enabled" if self.screen_orientation_enabled else "disabled"}')
+        self.get_logger().info('Screen orientation: always enabled')
+        self.get_logger().info(f'ROS topic publishing: {"enabled" if self.publish_to_topics else "disabled (console only)"}')
         self.get_logger().info('Using default pose until IMU data is received')
         
     def _publish_static_transforms(self):
@@ -201,17 +201,6 @@ class ChassisNode(Node):
         
         self.static_tf_broadcaster.sendTransform(static_transform)
         self.get_logger().info(f'Published static transform: {self.base_frame} -> {self.imu_frame}')
-    
-    def pose_callback(self, msg):
-        """Callback for IMU pose messages (legacy support)"""
-        with self.pose_lock:
-            self.current_pose = msg
-            self.last_pose_time = time.time()
-            
-        # Log pose updates (debug)
-        if self.get_logger().get_effective_level() <= rclpy.logging.LoggingSeverity.DEBUG:
-            q = msg.orientation
-            self.get_logger().debug(f'Received pose: q=({q.w:.3f}, {q.x:.3f}, {q.y:.3f}, {q.z:.3f})')
     
     def imu_callback(self, msg):
         """Callback for IMU data - converts sensor_msgs/Imu to internal Pose"""
@@ -257,66 +246,44 @@ class ChassisNode(Node):
         transform.transform.translation.y = current_pose.position.y
         transform.transform.translation.z = current_pose.position.z
         
-        # Use current orientation if available, otherwise use identity
-        if pose_time is not None and (time.time() - pose_time <= 1.0):
-            # Use live IMU orientation
-            transform.transform.rotation.x = current_pose.orientation.x
-            transform.transform.rotation.y = current_pose.orientation.y
-            transform.transform.rotation.z = current_pose.orientation.z
-            transform.transform.rotation.w = current_pose.orientation.w
-        else:
-            # Use identity orientation (no rotation) when no IMU data
-            transform.transform.rotation.x = 0.0
-            transform.transform.rotation.y = 0.0
-            transform.transform.rotation.z = 0.0
-            transform.transform.rotation.w = 1.0
-            
-            # Log warning if pose data is stale (but not on first run)
-            if pose_time is not None:
-                self.get_logger().warn('Using default orientation - IMU pose data is stale', throttle_duration_sec=5.0)
+        # Always use current pose orientation (maintain last known orientation when stale)
+        transform.transform.rotation.x = current_pose.orientation.x
+        transform.transform.rotation.y = current_pose.orientation.y
+        transform.transform.rotation.z = current_pose.orientation.z
+        transform.transform.rotation.w = current_pose.orientation.w
+        
+        # Log warning if pose data is stale (but not on first run)
+        if pose_time is not None and (time.time() - pose_time > 1.0):
+            self.get_logger().warn('IMU pose data is stale - maintaining last known orientation', throttle_duration_sec=5.0)
         
         self.tf_broadcaster.sendTransform(transform)
     
     def orientation_callback(self):
         """Timer callback for orientation detection and publishing (10Hz)"""
-        if not self.screen_orientation_enabled:
-            return
-            
         with self.pose_lock:
-            current_pose = self.current_pose
             pose_time = self.last_pose_time
-        
-        if pose_time is None:
+
+        if pose_time is None or time.time() - pose_time > 1.0:
             # No pose data received yet
             return
-            
-        # Check if pose data is recent (within 1 second)
-        if time.time() - pose_time > 1.0:
-            return
-            
-        # Calculate orientations for all screens
-        screen_orientations = self._calculate_all_screen_orientations(current_pose)
+
+        # Get orientations for all screens using tf frames
+        screen_orientations = self._get_all_screen_orientations()
         
         if not screen_orientations:
+            print("No screen orientations detected, skipping publishing")
             return
             
         # Find top and bottom screens
         top_screen = max(screen_orientations, key=lambda x: x['up_alignment'])
         bottom_screen = min(screen_orientations, key=lambda x: x['up_alignment'])
-        
-        # Publish chassis orientation
-        chassis_msg = ChassisOrientation()
-        chassis_msg.top_screen_id = top_screen['screen_id']
-        chassis_msg.bottom_screen_id = bottom_screen['screen_id']
-        chassis_msg.stamp = self.get_clock().now().to_msg()
-        self.chassis_orientation_pub.publish(chassis_msg)
-        
-        # Publish individual screen poses with stickiness
+
+        # Always compute individual screen poses with stickiness
         for orientation in screen_orientations:
             screen_id = orientation['screen_id']
             
             # Calculate rotation based on gravity direction and default orientation
-            new_rotation = self._calculate_screen_rotation(orientation, screen_id)
+            new_rotation = self._calculate_screen_rotation(screen_id)
             
             # Apply stickiness - only change rotation if alignment changes significantly
             old_alignment = self.screen_up_alignments.get(screen_id, -1.0)
@@ -325,93 +292,242 @@ class ChassisNode(Node):
             if alignment_change > self.rotation_threshold:
                 self.screen_rotations[screen_id] = new_rotation
                 self.screen_up_alignments[screen_id] = orientation['up_alignment']
-            
-            # Publish screen pose
-            screen_msg = ScreenPose()
-            screen_msg.screen_id = screen_id
-            screen_msg.rotation = self.screen_rotations[screen_id]
-            screen_msg.up_alignment = orientation['up_alignment']
-            screen_msg.is_facing_up = (screen_id == top_screen['screen_id'] and 
-                                     orientation['up_alignment'] > 0.7)
-            screen_msg.stamp = self.get_clock().now().to_msg()
-            
-            if screen_id in self.screen_pose_publishers:
-                self.screen_pose_publishers[screen_id].publish(screen_msg)
+
+        # Publish or log the orientation data
+        print("Publishing or logging orientation data")
+        self._publish_or_log_orientation_data(top_screen, bottom_screen, screen_orientations)
     
-    def _calculate_all_screen_orientations(self, pose):
-        """Calculate orientations for all screens based on current pose"""
-        if not self.screen_orientation_enabled:
+    def _get_screen_z_position(self, screen_id):
+        """Get the z position of a single screen frame in world coordinates"""
+        screen_frame = f'screen_{screen_id}_link'
+        
+        try:
+            # Try with latest available transform instead of current time
+            transform = self.tf_buffer.lookup_transform(
+                self.world_frame,
+                screen_frame,
+                rclpy.time.Time(),  # Use latest available transform
+                timeout=rclpy.duration.Duration(seconds=0.5)  # Increased timeout
+            )
+            return transform.transform.translation.z
+        except tf2_ros.LookupException as e:
+            print(f'LookupException for {screen_frame}: {e}')
+            return None
+        except tf2_ros.ExtrapolationException as e:
+            print(f'ExtrapolationException for {screen_frame}: {e}')
+            return None
+        except Exception as e:
+            print(f'Other exception for {screen_frame}: {e}')
+            return None
+    
+    def _calculate_up_alignment(self, z_position):
+        """Convert z position to up_alignment value [-1, 1]"""
+        # The dice has screens at ±0.0508m, so max range is about 0.1016m
+        up_alignment = z_position / 0.0508  # This gives -1 to +1 for bottom to top
+        return max(-1.0, min(1.0, up_alignment))  # Clamp to [-1, 1]
+    
+    def _apply_sticky_selection(self, values_dict, margin=0.01, mode='max'):
+        """Generic stickiness helper for selecting max/min values with margin
+        
+        Args:
+            values_dict: Dict of {id: value} to select from
+            margin: Margin for considering values as "clearly" different
+            mode: 'max' for highest value, 'min' for lowest value
+        
+        Returns:
+            Dict with same keys but potentially modified values for stickiness
+        """
+        if len(values_dict) < 2:
+            return values_dict
+            
+        values_array = np.array(list(values_dict.values()))
+        ids_array = np.array(list(values_dict.keys()))
+        
+        if mode == 'max':
+            target_value = np.max(values_array)
+            sorted_indices = np.argsort(values_array)[::-1]  # Descending order
+        else:  # mode == 'min'
+            target_value = np.min(values_array)
+            sorted_indices = np.argsort(values_array)  # Ascending order
+        
+        modified_values = values_dict.copy()
+        
+        # Find the target value(s) and check if they're clearly separated
+        target_mask = np.abs(values_array - target_value) < 1e-6
+        target_indices = np.where(target_mask)[0]
+        
+        if len(target_indices) > 0:
+            # Get the second-best value for comparison
+            non_target_indices = np.where(~target_mask)[0]
+            if len(non_target_indices) > 0:
+                if mode == 'max':
+                    second_best = np.max(values_array[non_target_indices])
+                    separation = target_value - second_best
+                else:
+                    second_best = np.min(values_array[non_target_indices])
+                    separation = second_best - target_value
+                
+                # If separation is less than margin, reduce confidence
+                if separation < margin:
+                    for idx in target_indices:
+                        screen_id = ids_array[idx]
+                        modified_values[screen_id] = values_dict[screen_id] * 0.5
+        
+        return modified_values
+    
+    def _get_all_screen_orientations(self):
+        """Get orientations for all screens based on tf frame positions"""
+        
+        # Get z positions for all screens
+        screen_positions = {}
+        for screen_config in dice_config.screen_configs:
+            screen_id = screen_config.id
+            z_position = self._get_screen_z_position(screen_id)
+            if z_position is not None:
+                screen_positions[screen_id] = z_position
+        
+        if not screen_positions:
+            self.get_logger().debug("No screen positions detected, cannot determine orientations")
             return []
             
-        # Convert quaternion to rotation matrix
-        q = pose.orientation
-        r = R.from_quat([q.x, q.y, q.z, q.w])
+        # Apply stickiness factor using generic helper
+        sticky_positions = self._apply_sticky_selection(screen_positions, margin=0.01, mode='max')
+        sticky_positions = self._apply_sticky_selection(sticky_positions, margin=0.01, mode='min')
         
-        # Get gravity vector in robot frame
-        gravity_world = np.array([0, 0, -1])  # Gravity points down in world frame
-        
-        # Screen normal definitions (based on dice geometry)
-        screen_normals = {
-            1: np.array([0, 0, 1]),   # Top face normal (+Z)
-            2: np.array([0, 1, 0]),   # Right face normal (+Y)
-            3: np.array([1, 0, 0]),   # Back face normal (+X)
-            4: np.array([0, -1, 0]),  # Left face normal (-Y)
-            5: np.array([-1, 0, 0]),  # Front face normal (-X)
-            6: np.array([0, 0, -1]),  # Bottom face normal (-Z)
-        }
-        
+        # Build orientation data
         orientations = []
-        for screen_config in dice_config.screen_configs:
-            screen_id = screen_config.id  # Config now uses 1-6 directly
-            
-            if screen_id not in screen_normals:
-                continue
-                
-            # Transform screen normal to world frame
-            screen_normal_world = r.apply(screen_normals[screen_id])
-            
-            # Calculate alignment with "up" direction (opposite to gravity)
-            up_alignment = np.dot(screen_normal_world, -gravity_world)
-            
+        for screen_id, z_position in sticky_positions.items():
+            up_alignment = self._calculate_up_alignment(z_position)
             orientations.append({
                 'screen_id': screen_id,
                 'up_alignment': float(up_alignment),
-                'normal_world': screen_normal_world,
-                'gravity_robot': r.inv().apply(gravity_world)
+                'z_position': float(screen_positions[screen_id]),  # Use original z for debug
+                'frame_name': f'screen_{screen_id}_link'
             })
-            
+        
         return orientations
     
-    def _calculate_screen_rotation(self, orientation, screen_id):
-        """Calculate the rotation needed for a screen based on gravity direction and default orientation"""
-        if not self.screen_orientation_enabled:
-            return 0
-            
-        # Get the screen's configuration
-        screen_config = None
-        for config in dice_config.screen_configs:
-            if config.id == screen_id:  # Config now uses 1-6 directly
-                screen_config = config
-                break
-                
-        if screen_config is None:
-            return 0
-            
-        # For now, use the default orientation from config
-        # More sophisticated gravity-based rotation calculation can be added here
-        default_rotation = screen_config.default_orientation
+    def _get_screen_edge_positions(self, screen_id):
+        """Get the z positions of all edge frames for a screen"""
+        edge_names = ['top', 'right', 'bottom', 'left']
+        edge_positions = {}
         
-        # Convert from ConfigRotation enum to integer
-        if hasattr(default_rotation, 'value'):
-            return default_rotation.value
+        for edge_name in edge_names:
+            edge_frame = f'screen_{screen_id}_edge_{edge_name}'
+            try:
+                transform = self.tf_buffer.lookup_transform(
+                    self.world_frame,
+                    edge_frame,
+                    rclpy.time.Time(),  # Use latest available transform
+                    timeout=rclpy.duration.Duration(seconds=0.01)  # Much shorter timeout
+                )
+                edge_positions[edge_name] = transform.transform.translation.z
+                print(f"Edge {edge_name} position for screen {screen_id}: {edge_positions[edge_name]:.4f}")
+            except (tf2_ros.LookupException, tf2_ros.ExtrapolationException, Exception):
+                # Skip this edge if transform not available - don't log to avoid spam
+                pass
+                
+        return edge_positions if edge_positions else None
+    
+    def _calculate_screen_rotation_from_edges(self, screen_id):
+        """Calculate screen rotation based on which edge is lowest (closest to gravity)"""
+        edge_positions = self._get_screen_edge_positions(screen_id)
+        if not edge_positions:
+            return None
+            
+        # Apply stickiness to edge selection
+        sticky_edges = self._apply_sticky_selection(edge_positions, margin=0.005, mode='min')
+        
+        # Find the lowest edge (most aligned with gravity)  
+        lowest_edge = min(sticky_edges.keys(), key=sticky_edges.get)
+        
+        # Map edge names to rotation values
+        # This assumes the screen should be rotated so the lowest edge becomes the "bottom"
+        edge_to_rotation = {
+            'bottom': ConfigRotation.ROTATION_0,    # Already at bottom
+            'right': ConfigRotation.ROTATION_90,    # Rotate 90° clockwise to make right edge the bottom
+            'top': ConfigRotation.ROTATION_180,     # Rotate 180° to make top edge the bottom
+            'left': ConfigRotation.ROTATION_270     # Rotate 270° clockwise to make left edge the bottom
+        }
+
+        new_rotation = edge_to_rotation.get(lowest_edge, ConfigRotation.ROTATION_0)
+
+        # Apply stickiness - only change if rotation differs significantly
+        if screen_id not in self.screen_edge_rotations:
+            self.screen_edge_rotations[screen_id] = new_rotation
+            return new_rotation
+    
+        old_rotation = self.screen_edge_rotations[screen_id]
+        # Calculate angular difference in degrees (accounting for wraparound)
+        # ConfigRotation values represent 90-degree increments
+        old_degrees = old_rotation * 90
+        new_degrees = new_rotation * 90
+        diff = abs(new_degrees - old_degrees)
+        if diff > 180:
+            diff = 360 - diff
+        
+        # Only update if change is significant (> 45 degrees, i.e., more than one rotation step)
+        if diff >= 90:  # Changed from 30 to 90 degrees since we work in 90-degree increments
+            self.screen_edge_rotations[screen_id] = new_rotation
+            return new_rotation
         else:
-            return int(default_rotation)
-    
-    def get_current_pose(self):
-        """Get the current robot pose"""
-        with self.pose_lock:
-            return self.current_pose
-    
+            # Keep old rotation - return the old value
+            return old_rotation
+            
+    def _publish_or_log_orientation_data(self, top_screen, bottom_screen, screen_orientations):
+        """Publish orientation data to ROS topics or log to console based on configuration"""
+        
+        # Publish to ROS topics if publishing is enabled and we have publishers
+        if self.publish_to_topics and self.chassis_orientation_pub:
+            # Dependencies should already be imported since we have publishers
+            # Publish chassis orientation
+            chassis_msg = ChassisOrientation()
+            chassis_msg.top_screen_id = top_screen['screen_id']
+            chassis_msg.bottom_screen_id = bottom_screen['screen_id']
+            chassis_msg.stamp = self.get_clock().now().to_msg()
+            self.chassis_orientation_pub.publish(chassis_msg)
+            
+            # Publish individual screen poses
+            for orientation in screen_orientations:
+                screen_id = orientation['screen_id']
+                
+                # Create and publish screen pose message
+                screen_msg = ScreenPose()
+                screen_msg.screen_id = screen_id
+                screen_msg.rotation = self.screen_rotations[screen_id]
+                screen_msg.up_alignment = orientation['up_alignment']
+                screen_msg.is_facing_up = (screen_id == top_screen['screen_id'] and 
+                                         orientation['up_alignment'] > 0.7)
+                screen_msg.stamp = self.get_clock().now().to_msg()
+                
+                if screen_id in self.screen_pose_publishers:
+                    self.screen_pose_publishers[screen_id].publish(screen_msg)
+
+        # Otherwise, just print to console
+        else:
+            # Info logging for screen positions with colors
+            info_msg = "Screen positions: "
+            top_color = self._get_screen_color_name(top_screen['screen_id'])
+            bottom_color = self._get_screen_color_name(bottom_screen['screen_id'])
+            info_msg += f"Top: {top_screen['screen_id']} ({top_color}), Bottom: {bottom_screen['screen_id']} ({bottom_color})"
+            self.get_logger().info(info_msg)
+
+            for screen in screen_orientations:
+                print(f"Screen {screen['screen_id']} ({self._get_screen_color_name(screen['screen_id'])}): {self.SCREEN_ROTATIONS[screen['rotation']]}")
+
+    def _calculate_screen_rotation(self, screen_id):
+        """Calculate the rotation needed for a screen based on edge frame positions"""
+        # Try to calculate rotation from edge positions first
+        edge_rotation = self._calculate_screen_rotation_from_edges(screen_id)
+        if edge_rotation is not None:
+            return edge_rotation
+            
+        # Fallback to default orientation from config or 0
+        if screen_id in dice_config.screen_configs:
+            return dice_config.screen_configs[screen_id].default_orientation
+        
+        return ConfigRotation.ROTATION_0
+
     def destroy_node(self):
         """Clean shutdown"""
         self.get_logger().info('Shutting down chassis node')

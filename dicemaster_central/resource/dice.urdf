@@ -88,12 +88,12 @@
   </joint>
   <link name="screen_1_edge_top"/>
   <!-- Right edge (+Y direction in screen local frame) -->
-  <joint name="screen_1_edge_right_joint" type="fixed">
+  <joint name="screen_1_edge_left_joint" type="fixed">
     <parent link="screen_1_link"/>
-    <child link="screen_1_edge_right"/>
+    <child link="screen_1_edge_left"/>
     <origin rpy="0 0 0" xyz="0 0.0475 0.001"/>
   </joint>
-  <link name="screen_1_edge_right"/>
+  <link name="screen_1_edge_left"/>
   <!-- Bottom edge (-X direction in screen local frame) -->
   <joint name="screen_1_edge_bottom_joint" type="fixed">
     <parent link="screen_1_link"/>
@@ -102,12 +102,12 @@
   </joint>
   <link name="screen_1_edge_bottom"/>
   <!-- Left edge (-Y direction in screen local frame) -->
-  <joint name="screen_1_edge_left_joint" type="fixed">
+  <joint name="screen_1_edge_right_joint" type="fixed">
     <parent link="screen_1_link"/>
-    <child link="screen_1_edge_left"/>
+    <child link="screen_1_edge_right"/>
     <origin rpy="0 0 0" xyz="0 -0.0475 0.001"/>
   </joint>
-  <link name="screen_1_edge_left"/>
+  <link name="screen_1_edge_right"/>
   <!-- Red -->
   <joint name="screen_1_joint" type="fixed">
     <parent link="base_link"/>
@@ -123,7 +123,7 @@
         <!-- 3.74 inches screen, 2mm thick -->
       </geometry>
       <material name="screen_2_material">
-        <color rgba="0.0 0.0 1.0 1.0"/>
+        <color rgba="0.0 1.0 0.0 1.0"/>
       </material>
     </visual>
     <collision>
@@ -149,12 +149,12 @@
   </joint>
   <link name="screen_2_edge_top"/>
   <!-- Right edge (+Y direction in screen local frame) -->
-  <joint name="screen_2_edge_right_joint" type="fixed">
+  <joint name="screen_2_edge_left_joint" type="fixed">
     <parent link="screen_2_link"/>
-    <child link="screen_2_edge_right"/>
+    <child link="screen_2_edge_left"/>
     <origin rpy="0 0 0" xyz="0 0.0475 0.001"/>
   </joint>
-  <link name="screen_2_edge_right"/>
+  <link name="screen_2_edge_left"/>
   <!-- Bottom edge (-X direction in screen local frame) -->
   <joint name="screen_2_edge_bottom_joint" type="fixed">
     <parent link="screen_2_link"/>
@@ -163,18 +163,18 @@
   </joint>
   <link name="screen_2_edge_bottom"/>
   <!-- Left edge (-Y direction in screen local frame) -->
-  <joint name="screen_2_edge_left_joint" type="fixed">
+  <joint name="screen_2_edge_right_joint" type="fixed">
     <parent link="screen_2_link"/>
-    <child link="screen_2_edge_left"/>
+    <child link="screen_2_edge_right"/>
     <origin rpy="0 0 0" xyz="0 -0.0475 0.001"/>
   </joint>
-  <link name="screen_2_edge_left"/>
-  <!-- Blue -->
+  <link name="screen_2_edge_right"/>
+  <!-- Green -->
   <joint name="screen_2_joint" type="fixed">
     <parent link="base_link"/>
     <child link="screen_2_link"/>
-    <origin rpy="1.5708 0 3.14159" xyz="0 0.0508 0"/>
-    <!-- Rotated to face +Y -->
+    <origin rpy="1.5708 0 1.5708" xyz="0.0508 0 0"/>
+    <!-- Rotated to face +X -->
   </joint>
   <!-- Main screen link -->
   <link name="screen_3_link">
@@ -184,7 +184,7 @@
         <!-- 3.74 inches screen, 2mm thick -->
       </geometry>
       <material name="screen_3_material">
-        <color rgba="0.0 1.0 0.0 1.0"/>
+        <color rgba="0.0 0.0 1.0 1.0"/>
       </material>
     </visual>
     <collision>
@@ -210,12 +210,12 @@
   </joint>
   <link name="screen_3_edge_top"/>
   <!-- Right edge (+Y direction in screen local frame) -->
-  <joint name="screen_3_edge_right_joint" type="fixed">
+  <joint name="screen_3_edge_left_joint" type="fixed">
     <parent link="screen_3_link"/>
-    <child link="screen_3_edge_right"/>
+    <child link="screen_3_edge_left"/>
     <origin rpy="0 0 0" xyz="0 0.0475 0.001"/>
   </joint>
-  <link name="screen_3_edge_right"/>
+  <link name="screen_3_edge_left"/>
   <!-- Bottom edge (-X direction in screen local frame) -->
   <joint name="screen_3_edge_bottom_joint" type="fixed">
     <parent link="screen_3_link"/>
@@ -224,18 +224,18 @@
   </joint>
   <link name="screen_3_edge_bottom"/>
   <!-- Left edge (-Y direction in screen local frame) -->
-  <joint name="screen_3_edge_left_joint" type="fixed">
+  <joint name="screen_3_edge_right_joint" type="fixed">
     <parent link="screen_3_link"/>
-    <child link="screen_3_edge_left"/>
+    <child link="screen_3_edge_right"/>
     <origin rpy="0 0 0" xyz="0 -0.0475 0.001"/>
   </joint>
-  <link name="screen_3_edge_left"/>
-  <!-- Green -->
+  <link name="screen_3_edge_right"/>
+  <!-- Blue -->
   <joint name="screen_3_joint" type="fixed">
     <parent link="base_link"/>
     <child link="screen_3_link"/>
-    <origin rpy="1.5708 0 1.5708" xyz="0.0508 0 0"/>
-    <!-- Rotated to face +X -->
+    <origin rpy="1.5708 0 3.14159" xyz="0 0.0508 0"/>
+    <!-- Rotated to face +Y -->
   </joint>
   <!-- Main screen link -->
   <link name="screen_4_link">
@@ -245,7 +245,7 @@
         <!-- 3.74 inches screen, 2mm thick -->
       </geometry>
       <material name="screen_4_material">
-        <color rgba="1.0 0.0 1.0 1.0"/>
+        <color rgba="1.0 1.0 0.0 1.0"/>
       </material>
     </visual>
     <collision>
@@ -271,12 +271,12 @@
   </joint>
   <link name="screen_4_edge_top"/>
   <!-- Right edge (+Y direction in screen local frame) -->
-  <joint name="screen_4_edge_right_joint" type="fixed">
+  <joint name="screen_4_edge_left_joint" type="fixed">
     <parent link="screen_4_link"/>
-    <child link="screen_4_edge_right"/>
+    <child link="screen_4_edge_left"/>
     <origin rpy="0 0 0" xyz="0 0.0475 0.001"/>
   </joint>
-  <link name="screen_4_edge_right"/>
+  <link name="screen_4_edge_left"/>
   <!-- Bottom edge (-X direction in screen local frame) -->
   <joint name="screen_4_edge_bottom_joint" type="fixed">
     <parent link="screen_4_link"/>
@@ -285,18 +285,18 @@
   </joint>
   <link name="screen_4_edge_bottom"/>
   <!-- Left edge (-Y direction in screen local frame) -->
-  <joint name="screen_4_edge_left_joint" type="fixed">
+  <joint name="screen_4_edge_right_joint" type="fixed">
     <parent link="screen_4_link"/>
-    <child link="screen_4_edge_left"/>
+    <child link="screen_4_edge_right"/>
     <origin rpy="0 0 0" xyz="0 -0.0475 0.001"/>
   </joint>
-  <link name="screen_4_edge_left"/>
-  <!-- Magenta -->
+  <link name="screen_4_edge_right"/>
+  <!-- Yellow -->
   <joint name="screen_4_joint" type="fixed">
     <parent link="base_link"/>
     <child link="screen_4_link"/>
-    <origin rpy="-1.5708 0 0" xyz="0 -0.0508 0"/>
-    <!-- Rotated to face -Y -->
+    <origin rpy="1.5708 0 -1.5708" xyz="-0.0508 0 0"/>
+    <!-- Rotated to face -X -->
   </joint>
   <!-- Main screen link -->
   <link name="screen_5_link">
@@ -306,7 +306,7 @@
         <!-- 3.74 inches screen, 2mm thick -->
       </geometry>
       <material name="screen_5_material">
-        <color rgba="1.0 1.0 0.0 1.0"/>
+        <color rgba="1.0 0.0 1.0 1.0"/>
       </material>
     </visual>
     <collision>
@@ -332,12 +332,12 @@
   </joint>
   <link name="screen_5_edge_top"/>
   <!-- Right edge (+Y direction in screen local frame) -->
-  <joint name="screen_5_edge_right_joint" type="fixed">
+  <joint name="screen_5_edge_left_joint" type="fixed">
     <parent link="screen_5_link"/>
-    <child link="screen_5_edge_right"/>
+    <child link="screen_5_edge_left"/>
     <origin rpy="0 0 0" xyz="0 0.0475 0.001"/>
   </joint>
-  <link name="screen_5_edge_right"/>
+  <link name="screen_5_edge_left"/>
   <!-- Bottom edge (-X direction in screen local frame) -->
   <joint name="screen_5_edge_bottom_joint" type="fixed">
     <parent link="screen_5_link"/>
@@ -346,18 +346,18 @@
   </joint>
   <link name="screen_5_edge_bottom"/>
   <!-- Left edge (-Y direction in screen local frame) -->
-  <joint name="screen_5_edge_left_joint" type="fixed">
+  <joint name="screen_5_edge_right_joint" type="fixed">
     <parent link="screen_5_link"/>
-    <child link="screen_5_edge_left"/>
+    <child link="screen_5_edge_right"/>
     <origin rpy="0 0 0" xyz="0 -0.0475 0.001"/>
   </joint>
-  <link name="screen_5_edge_left"/>
-  <!-- Yellow -->
+  <link name="screen_5_edge_right"/>
+  <!-- Magenta -->
   <joint name="screen_5_joint" type="fixed">
     <parent link="base_link"/>
     <child link="screen_5_link"/>
-    <origin rpy="1.5708 0 -1.5708" xyz="-0.0508 0 0"/>
-    <!-- Rotated to face -X -->
+    <origin rpy="1.5708 0 0" xyz="0 -0.0508 0"/>
+    <!-- Rotated to face -Y -->
   </joint>
   <!-- Main screen link -->
   <link name="screen_6_link">
@@ -393,12 +393,12 @@
   </joint>
   <link name="screen_6_edge_top"/>
   <!-- Right edge (+Y direction in screen local frame) -->
-  <joint name="screen_6_edge_right_joint" type="fixed">
+  <joint name="screen_6_edge_left_joint" type="fixed">
     <parent link="screen_6_link"/>
-    <child link="screen_6_edge_right"/>
+    <child link="screen_6_edge_left"/>
     <origin rpy="0 0 0" xyz="0 0.0475 0.001"/>
   </joint>
-  <link name="screen_6_edge_right"/>
+  <link name="screen_6_edge_left"/>
   <!-- Bottom edge (-X direction in screen local frame) -->
   <joint name="screen_6_edge_bottom_joint" type="fixed">
     <parent link="screen_6_link"/>
@@ -407,17 +407,17 @@
   </joint>
   <link name="screen_6_edge_bottom"/>
   <!-- Left edge (-Y direction in screen local frame) -->
-  <joint name="screen_6_edge_left_joint" type="fixed">
+  <joint name="screen_6_edge_right_joint" type="fixed">
     <parent link="screen_6_link"/>
-    <child link="screen_6_edge_left"/>
+    <child link="screen_6_edge_right"/>
     <origin rpy="0 0 0" xyz="0 -0.0475 0.001"/>
   </joint>
-  <link name="screen_6_edge_left"/>
+  <link name="screen_6_edge_right"/>
   <!-- Cyan -->
   <joint name="screen_6_joint" type="fixed">
     <parent link="base_link"/>
     <child link="screen_6_link"/>
-    <origin rpy="0 0 3.14159" xyz="0 0 -0.0508"/>
+    <origin rpy="3.14159 0 3.14159" xyz="0 0 -0.0508"/>
     <!-- Half cube height down, flipped -->
   </joint>
 </robot>

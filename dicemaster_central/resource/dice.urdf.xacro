@@ -60,36 +60,36 @@
     <origin xyz="0 0 0.0508" rpy="0 0 0"/> <!-- Half cube height up -->
   </joint>
 
-  <!-- Screen 2: Right face (+Y direction) -->
-  <xacro:screen_component screen_id="2" color_r="0.0" color_g="0.0" color_b="1.0"/> <!-- Blue -->
+  <!-- Screen 3: Back face (+X direction) -->
+  <xacro:screen_component screen_id="2" color_r="0.0" color_g="1.0" color_b="0.0"/> <!-- Green -->
   <joint name="screen_2_joint" type="fixed">
     <parent link="base_link"/>
     <child link="screen_2_link"/>
-    <origin xyz="0 0.0508 0" rpy="1.5708 0 3.14159"/> <!-- Rotated to face +Y -->
-  </joint>
-
-  <!-- Screen 3: Back face (+X direction) -->
-  <xacro:screen_component screen_id="3" color_r="0.0" color_g="1.0" color_b="0.0"/> <!-- Green -->
-  <joint name="screen_3_joint" type="fixed">
-    <parent link="base_link"/>
-    <child link="screen_3_link"/>
     <origin xyz="0.0508 0 0" rpy="1.5708 0 1.5708"/> <!-- Rotated to face +X -->
   </joint>
 
-  <!-- Screen 4: Left face (-Y direction) -->
-  <xacro:screen_component screen_id="4" color_r="1.0" color_g="0.0" color_b="1.0"/> <!-- Magenta -->
-  <joint name="screen_4_joint" type="fixed">
+  <!-- Screen 2: Right face (+Y direction) -->
+  <xacro:screen_component screen_id="3" color_r="0.0" color_g="0.0" color_b="1.0"/> <!-- Blue -->
+  <joint name="screen_3_joint" type="fixed">
     <parent link="base_link"/>
-    <child link="screen_4_link"/>
-    <origin xyz="0 -0.0508 0" rpy="-1.5708 0 0"/> <!-- Rotated to face -Y -->
+    <child link="screen_3_link"/>
+    <origin xyz="0 0.0508 0" rpy="1.5708 0 3.14159"/> <!-- Rotated to face +Y -->
   </joint>
 
   <!-- Screen 5: Front face (-X direction) -->
-  <xacro:screen_component screen_id="5" color_r="1.0" color_g="1.0" color_b="0.0"/> <!-- Yellow -->
+  <xacro:screen_component screen_id="4" color_r="1.0" color_g="1.0" color_b="0.0"/> <!-- Yellow -->
+  <joint name="screen_4_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="screen_4_link"/>
+    <origin xyz="-0.0508 0 0" rpy="1.5708 0 -1.5708"/> <!-- Rotated to face -X -->
+  </joint>
+
+  <!-- Screen 4: Left face (-Y direction) -->
+  <xacro:screen_component screen_id="5" color_r="1.0" color_g="0.0" color_b="1.0"/> <!-- Magenta -->
   <joint name="screen_5_joint" type="fixed">
     <parent link="base_link"/>
     <child link="screen_5_link"/>
-    <origin xyz="-0.0508 0 0" rpy="1.5708 0 -1.5708"/> <!-- Rotated to face -X -->
+    <origin xyz="0 -0.0508 0" rpy="1.5708 0 0"/> <!-- Rotated to face -Y -->
   </joint>
 
   <!-- Screen 6: Bottom face (-Z direction) -->
@@ -97,7 +97,7 @@
   <joint name="screen_6_joint" type="fixed">
     <parent link="base_link"/>
     <child link="screen_6_link"/>
-    <origin xyz="0 0 -0.0508" rpy="0 0 3.14159"/> <!-- Half cube height down, flipped -->
+    <origin xyz="0 0 -0.0508" rpy="3.14159 0 3.14159"/> <!-- Half cube height down, flipped -->
   </joint>
 
 </robot>

@@ -5,10 +5,10 @@ Loads screen configuration from JSON file and provides client library for ROS no
 
 spi_config: SPIConfig class
 screen_config_global: ScreenConfigGlobal class
-screen_configs: list of ScreenConfig instances
+screen_configs: dict of id -> ScreenConfig instances
 """
 
-from typing import Tuple, List
+from typing import Dict, List
 from dataclasses import dataclass, field
 from dicemaster_central.constants import Rotation
 
@@ -47,14 +47,14 @@ class IMUConfig:
 @dataclass
 class DiceConfig:
     active_spi_controllers: List[int] = field(default_factory=lambda: [0, 1, 3])
-    screen_configs: Tuple[ScreenConfig, ...] = field(default_factory=lambda: (
-        ScreenConfig(id=1, bus_id=0, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 1"),
-        ScreenConfig(id=2, bus_id=0, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 2"),
-        ScreenConfig(id=3, bus_id=1, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 3"),
-        ScreenConfig(id=4, bus_id=1, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 4"),
-        ScreenConfig(id=5, bus_id=3, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 5"),
-        ScreenConfig(id=6, bus_id=3, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 6"),
-    ))
+    screen_configs: Dict[int, ScreenConfig] = field(default_factory=lambda: {
+        1: ScreenConfig(id=1, bus_id=0, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 1"),
+        2: ScreenConfig(id=2, bus_id=0, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 2"),
+        3: ScreenConfig(id=3, bus_id=1, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 3"),
+        4: ScreenConfig(id=4, bus_id=1, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 4"),
+        5: ScreenConfig(id=5, bus_id=3, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 5"),
+        6: ScreenConfig(id=6, bus_id=3, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 6"),
+    })
     global_screen_config: GlobalScreenConfig = field(default_factory=GlobalScreenConfig)
     spi_config: SPIConfig = field(default_factory=SPIConfig)
     imu_config: IMUConfig = field(default_factory=IMUConfig)

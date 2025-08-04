@@ -57,7 +57,7 @@ class ScreenBusManager(Node):
         self.global_settings = dice_config.global_screen_config
         
         # Filter screen configs for this bus
-        bus_screen_configs = [cfg for cfg in dice_config.screen_configs if cfg.bus_id == bus_id]
+        bus_screen_configs = [cfg for cfg in dice_config.screen_configs.values() if cfg.bus_id == bus_id]
         self.screen_configs: Dict[int, ScreenConfig] = {cfg.id: cfg for cfg in bus_screen_configs}
 
         self.screens: Dict[int, Screen] = {

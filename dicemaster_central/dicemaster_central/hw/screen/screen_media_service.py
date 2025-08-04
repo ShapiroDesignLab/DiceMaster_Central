@@ -42,7 +42,7 @@ class ScreenMediaService(Node):
         # Create a lookup for routing messages to the correct bus manager
         self.screen_to_bus_manager = {
             screen_config.id: self.bus_managers[screen_config.bus_id] 
-            for screen_config in self.screen_configs
+            for screen_config in self.screen_configs.values()
         }
 
         # Processing threads

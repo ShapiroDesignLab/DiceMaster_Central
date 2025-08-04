@@ -6,6 +6,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /TF1
+        - /TF1/Frames1
+        - /TF1/Tree1
         - /RobotModel1
       Splitter Ratio: 0.5
     Tree Height: 560
@@ -50,7 +52,7 @@ Visualization Manager:
       Frames:
         All Enabled: false
         base_link:
-          Value: true
+          Value: false
         imu_link:
           Value: false
         screen_1_camera_frame:
@@ -127,7 +129,7 @@ Visualization Manager:
           Value: true
         world:
           Value: false
-      Marker Scale: 0.2
+      Marker Scale: 0.15
       Name: TF
       Show Arrows: true
       Show Axes: false
@@ -228,6 +230,18 @@ Visualization Manager:
       Update Interval: 0
       Value: true
       Visual Enabled: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Screen Center Arrows
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /screen_center_arrows
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
