@@ -15,8 +15,9 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MotionDetection.msg"
   "msg/NotificationRequest.msg"
-  "msg/RawIMU.msg"
   "msg/ScreenMediaCmd.msg"
+  "msg/ChassisOrientation.msg"
+  "msg/ScreenPose.msg"
   DEPENDENCIES builtin_interfaces std_msgs
 )
 
