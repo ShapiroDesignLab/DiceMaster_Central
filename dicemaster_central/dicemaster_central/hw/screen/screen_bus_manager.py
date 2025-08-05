@@ -146,7 +146,7 @@ class ScreenBusManager(Node):
 
     def queue_protocol_message(self, screen_id: int, message: ProtocolMessage, priority: int = MessagePriority.NORMAL) -> bool:
         """Queue a protocol message for transmission"""
-        if screen_id not in self.screen_configs:
+        if screen_id not in self.screen_configs.keys():
             self.node.get_logger().warn(f"Invalid screen ID {screen_id} for bus {self.bus_id}")
             return False
 

@@ -8,16 +8,12 @@ Supports INFO and ERROR notifications with appropriate colors and formatting.
 
 import rclpy
 from rclpy.node import Node
-from rclpy.service import Service
 from typing import Dict, Optional, List, Tuple
 import threading
-import time
 
 # DiceMaster imports
 from dicemaster_central.data_types.media_types import VirtualTextGroup
 from dicemaster_central.hw.screen import ScreenManager, ScreenRequest, ContentType
-from dicemaster_central.config.constants import Rotation
-
 # ROS message imports  
 from dicemaster_central_msgs.msg import NotificationRequest
 

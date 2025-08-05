@@ -78,6 +78,7 @@ class ChassisNode(Node):
         self.declare_parameter('alternative_imu_topic', '/data/imu')
         self.declare_parameter('rotation_threshold', 0.7)  # Stickiness factor for rotation changes
         self.declare_parameter('publish_to_topics', True)  # Publish to ROS topics vs just logging
+        self.declare_parameter('edge_detection_frames', 10)  # Required consecutive detections for edge rotation
         
         # Get parameters
         self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
@@ -89,6 +90,7 @@ class ChassisNode(Node):
         self.alt_imu_topic = self.get_parameter('alternative_imu_topic').get_parameter_value().string_value
         self.rotation_threshold = self.get_parameter('rotation_threshold').get_parameter_value().double_value
         self.publish_to_topics = self.get_parameter('publish_to_topics').get_parameter_value().bool_value
+        self.edge_detection_frames = self.get_parameter('edge_detection_frames').get_parameter_value().integer_value
         
         # Initialize publishers (only if publishing is enabled)
         if self.publish_to_topics:
@@ -140,11 +142,15 @@ class ChassisNode(Node):
         self.screen_rotations = {}  # screen_id -> current rotation
         self.screen_up_alignments = {}  # screen_id -> last up_alignment value
         self.screen_edge_rotations = {}  # screen_id -> last edge-based rotation
-        for screen_config in dice_config.screen_configs:
+        self.screen_edge_detection_history = {}  # screen_id -> list of recent edge detections
+        self.screen_edge_consecutive_count = {}  # screen_id -> count of consecutive same edge detections
+        for screen_config in dice_config.screen_configs.values():
             screen_id = screen_config.id  # Config now uses 1-6 directly
             self.screen_rotations[screen_id] = screen_config.default_orientation
             self.screen_up_alignments[screen_id] = -1.0  # Start with fully down
             self.screen_edge_rotations[screen_id] = 0  # Start with 0 rotation
+            self.screen_edge_detection_history[screen_id] = []  # Empty history
+            self.screen_edge_consecutive_count[screen_id] = 0  # No consecutive detections yet
         
         # Subscribe to IMU data (try multiple topics)
         self.imu_sub = self.create_subscription(
@@ -176,6 +182,7 @@ class ChassisNode(Node):
         self.get_logger().info(f'IMU frame: {self.imu_frame}')
         self.get_logger().info(f'IMU topics: {self.imu_topic}, {self.alt_imu_topic}')
         self.get_logger().info('Screen orientation: always enabled')
+        self.get_logger().info(f'Edge detection frames required: {self.edge_detection_frames}')
         self.get_logger().info(f'ROS topic publishing: {"enabled" if self.publish_to_topics else "disabled (console only)"}')
         self.get_logger().info('Using default pose until IMU data is received')
         
@@ -283,7 +290,7 @@ class ChassisNode(Node):
             screen_id = orientation['screen_id']
             
             # Calculate rotation based on gravity direction and default orientation
-            new_rotation = self._calculate_screen_rotation(screen_id)
+            new_rotation = self._calculate_screen_rotation_from_edges(screen_id)
             
             # Apply stickiness - only change rotation if alignment changes significantly
             old_alignment = self.screen_up_alignments.get(screen_id, -1.0)
@@ -307,7 +314,7 @@ class ChassisNode(Node):
                 self.world_frame,
                 screen_frame,
                 rclpy.time.Time(),  # Use latest available transform
-                timeout=rclpy.duration.Duration(seconds=0.5)  # Increased timeout
+                timeout=rclpy.duration.Duration(seconds=0.1)  # Increased timeout
             )
             return transform.transform.translation.z
         except tf2_ros.LookupException as e:
@@ -345,10 +352,8 @@ class ChassisNode(Node):
         
         if mode == 'max':
             target_value = np.max(values_array)
-            sorted_indices = np.argsort(values_array)[::-1]  # Descending order
         else:  # mode == 'min'
             target_value = np.min(values_array)
-            sorted_indices = np.argsort(values_array)  # Ascending order
         
         modified_values = values_dict.copy()
         
@@ -380,7 +385,7 @@ class ChassisNode(Node):
         
         # Get z positions for all screens
         screen_positions = {}
-        for screen_config in dice_config.screen_configs:
+        for screen_config in dice_config.screen_configs.values():
             screen_id = screen_config.id
             z_position = self._get_screen_z_position(screen_id)
             if z_position is not None:
@@ -430,49 +435,76 @@ class ChassisNode(Node):
         return edge_positions if edge_positions else None
     
     def _calculate_screen_rotation_from_edges(self, screen_id):
-        """Calculate screen rotation based on which edge is lowest (closest to gravity)"""
+        """Calculate screen rotation based on which edge is lowest (closest to gravity)
+        
+        Only updates rotation after detecting the same edge for 10 consecutive frames.
+        If the edge changes within the 10 frames, the counter resets.
+        """
         edge_positions = self._get_screen_edge_positions(screen_id)
         if not edge_positions:
-            return None
+            # No edge data - keep current rotation and reset detection history
+            self.screen_edge_detection_history[screen_id] = []
+            self.screen_edge_consecutive_count[screen_id] = 0
+            return self.screen_edge_rotations.get(screen_id, ConfigRotation.ROTATION_0)
             
         # Apply stickiness to edge selection
         sticky_edges = self._apply_sticky_selection(edge_positions, margin=0.005, mode='min')
         
         # Find the lowest edge (most aligned with gravity)  
-        lowest_edge = min(sticky_edges.keys(), key=sticky_edges.get)
+        current_lowest_edge = min(sticky_edges.keys(), key=sticky_edges.get)
         
-        # Map edge names to rotation values
-        # This assumes the screen should be rotated so the lowest edge becomes the "bottom"
-        edge_to_rotation = {
-            'bottom': ConfigRotation.ROTATION_0,    # Already at bottom
-            'right': ConfigRotation.ROTATION_90,    # Rotate 90° clockwise to make right edge the bottom
-            'top': ConfigRotation.ROTATION_180,     # Rotate 180° to make top edge the bottom
-            'left': ConfigRotation.ROTATION_270     # Rotate 270° clockwise to make left edge the bottom
-        }
-
-        new_rotation = edge_to_rotation.get(lowest_edge, ConfigRotation.ROTATION_0)
-
-        # Apply stickiness - only change if rotation differs significantly
-        if screen_id not in self.screen_edge_rotations:
-            self.screen_edge_rotations[screen_id] = new_rotation
-            return new_rotation
-    
-        old_rotation = self.screen_edge_rotations[screen_id]
-        # Calculate angular difference in degrees (accounting for wraparound)
-        # ConfigRotation values represent 90-degree increments
-        old_degrees = old_rotation * 90
-        new_degrees = new_rotation * 90
-        diff = abs(new_degrees - old_degrees)
-        if diff > 180:
-            diff = 360 - diff
+        # Update detection history
+        detection_history = self.screen_edge_detection_history[screen_id]
         
-        # Only update if change is significant (> 45 degrees, i.e., more than one rotation step)
-        if diff >= 90:  # Changed from 30 to 90 degrees since we work in 90-degree increments
-            self.screen_edge_rotations[screen_id] = new_rotation
-            return new_rotation
+        # Check if this is the same edge as the last detection
+        if len(detection_history) > 0 and detection_history[-1] == current_lowest_edge:
+            # Same edge as last time - increment consecutive count
+            self.screen_edge_consecutive_count[screen_id] += 1
         else:
-            # Keep old rotation - return the old value
-            return old_rotation
+            # Different edge - reset consecutive count and start new sequence
+            self.screen_edge_consecutive_count[screen_id] = 1
+        
+        # Add current detection to history (keep only recent detections)
+        detection_history.append(current_lowest_edge)
+        if len(detection_history) > self.edge_detection_frames:
+            detection_history.pop(0)  # Remove oldest detection
+        
+        # Check if we have enough consecutive detections
+        consecutive_count = self.screen_edge_consecutive_count[screen_id]
+        if consecutive_count >= self.edge_detection_frames:
+            # We have enough consecutive detections - calculate new rotation
+            
+            # Map edge names to rotation values
+            edge_to_rotation = {
+                'bottom': ConfigRotation.ROTATION_0,    # Already at bottom
+                'right': ConfigRotation.ROTATION_90,    # Rotate 90° clockwise
+                'top': ConfigRotation.ROTATION_180,     # Rotate 180°
+                'left': ConfigRotation.ROTATION_270     # Rotate 270° clockwise
+            }
+            
+            new_rotation = edge_to_rotation.get(current_lowest_edge, ConfigRotation.ROTATION_0)
+            
+            # Check if this is actually a change from current rotation
+            current_rotation = self.screen_edge_rotations.get(screen_id, ConfigRotation.ROTATION_0)
+            if new_rotation != current_rotation:
+                # Update rotation
+                self.screen_edge_rotations[screen_id] = new_rotation
+                self.get_logger().info(
+                    f"Screen {screen_id} rotation updated to {new_rotation} "
+                    f"after {consecutive_count} consecutive detections of '{current_lowest_edge}' edge"
+                )
+                return new_rotation
+            else:
+                # Same rotation - no change needed
+                return current_rotation
+        else:
+            # Not enough consecutive detections yet - keep current rotation
+            current_rotation = self.screen_edge_rotations.get(screen_id, ConfigRotation.ROTATION_0)
+            self.get_logger().debug(
+                f"Screen {screen_id}: {consecutive_count}/{self.edge_detection_frames} "
+                f"consecutive detections of '{current_lowest_edge}' edge"
+            )
+            return current_rotation
             
     def _publish_or_log_orientation_data(self, top_screen, bottom_screen, screen_orientations):
         """Publish orientation data to ROS topics or log to console based on configuration"""
@@ -514,19 +546,6 @@ class ChassisNode(Node):
 
             for screen in screen_orientations:
                 print(f"Screen {screen['screen_id']} ({self._get_screen_color_name(screen['screen_id'])}): {self.SCREEN_ROTATIONS[screen['rotation']]}")
-
-    def _calculate_screen_rotation(self, screen_id):
-        """Calculate the rotation needed for a screen based on edge frame positions"""
-        # Try to calculate rotation from edge positions first
-        edge_rotation = self._calculate_screen_rotation_from_edges(screen_id)
-        if edge_rotation is not None:
-            return edge_rotation
-            
-        # Fallback to default orientation from config or 0
-        if screen_id in dice_config.screen_configs:
-            return dice_config.screen_configs[screen_id].default_orientation
-        
-        return ConfigRotation.ROTATION_0
 
     def destroy_node(self):
         """Clean shutdown"""

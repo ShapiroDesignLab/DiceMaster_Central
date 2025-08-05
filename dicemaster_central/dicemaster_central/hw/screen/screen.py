@@ -32,27 +32,27 @@ class Screen:
     
     This class manages a single screen device and provides:
     - Media processing (text, images, GIFs) in a separate thread
-    - Automatic rotation updates from chassis orientation system
+    - Rotation updates by subscribing to chassis pose topics (/chassis/screen_{id}_pose)
     - GIF playback with frame timing
-    - Orientation-aware content re-transmission
+    - Content re-transmission when rotation changes
+    
+    Note: This class does NOT perform orientation detection. It relies entirely on
+    rotation information provided by the chassis node via ScreenPose messages.
     
     Args:
         node: ROS2 node for logging and timer creation
         screen_id: Unique identifier for this screen
         bus_manager: Bus manager for sending protocol messages
-        using_rotation: Whether to enable automatic rotation tracking (default: True)
     """
     def __init__(self,
         node, 
         screen_id: int,
-        bus_manager_queue,
-        using_rotation=True
+        bus_manager_queue
     ):
         # Basic properties
         self.screen_id = screen_id
         self.node = node
         self.bus_manager_queue = bus_manager_queue
-        self.using_rotation = using_rotation
         self.current_rotation = Rotation.ROTATION_0
         
         # Content management
@@ -75,51 +75,46 @@ class Screen:
         self.gif_lock = threading.Lock()
         
         # Chassis pose subscription for rotation updates
-        self.pose_subscription = None
-        if using_rotation:
-            self._setup_pose_subscription()
+        topic_name = f'/chassis/screen_{self.screen_id}_pose'
+        self.pose_subscription = self.node.create_subscription(
+            ScreenPose,
+            topic_name,
+            self._pose_callback,
+            10
+        )
+        self.node.get_logger().info(f"Screen {self.screen_id} subscribed to {topic_name}")
 
-        self.node.get_logger().info(f"Screen {screen_id} initialized {' with chassis rotation tracking' if using_rotation else ''}")
+        self.node.get_logger().info(f"Screen {screen_id} initialized")
 
     def __repr__(self):
-        return f"Screen(screen_id={self.screen_id}, rotation={self.current_rotation}, rotation_enabled={self.using_rotation})"
-
-    def _setup_pose_subscription(self):
-        """Setup subscription to chassis pose topic for rotation updates"""
-        try:
-            topic_name = f'/chassis/screen_{self.screen_id}_pose'
-            self.pose_subscription = self.node.create_subscription(
-                ScreenPose,
-                topic_name,
-                self._pose_callback,
-                10
-            )
-            self.node.get_logger().info(f"Screen {self.screen_id} subscribed to {topic_name}")
-            
-        except Exception as e:
-            self.node.get_logger().warn(f"Failed to setup pose subscription for screen {self.screen_id}: {e}")
-            self.pose_subscription = None
+        return f"Screen(screen_id={self.screen_id}, rotation={self.current_rotation})"
 
     def _pose_callback(self, msg: ScreenPose):
-        """Callback for chassis pose updates"""
+        """Callback for chassis pose updates from /chassis/screen_{id}_pose topic
+        
+        Receives ScreenPose messages from the chassis node containing rotation
+        information calculated from IMU and orientation detection.
+        """
         if msg.screen_id != self.screen_id:
             return
             
         new_rotation = Rotation(msg.rotation)
         
         # Check if rotation changed
-        if new_rotation != self.current_rotation:
-            old_rotation = self.current_rotation
-            self.current_rotation = new_rotation
-            
-            self.node.get_logger().info(
-                f'Screen {self.screen_id} rotation updated from {old_rotation} to {new_rotation} '
-                f'(up_alignment: {msg.up_alignment:.3f}, facing_up: {msg.is_facing_up})'
-            )
-            
-            # Re-send current content with new rotation
-            if self.last_content is not None:
-                self._resend_with_rotation()
+        if new_rotation == self.current_rotation:
+            return
+    
+        old_rotation = self.current_rotation
+        self.current_rotation = new_rotation
+        
+        self.node.get_logger().info(
+            f'Screen {self.screen_id} rotation updated from {old_rotation} to {new_rotation} '
+            f'(up_alignment: {msg.up_alignment:.3f}, facing_up: {msg.is_facing_up})'
+        )
+        
+        # Re-send current content with new rotation
+        if self.last_content is not None:
+            self._resend_with_rotation()
 
     def destroy(self):
         """Clean up resources"""
@@ -200,7 +195,7 @@ class Screen:
             text_group = TextGroup(file_path=request.file_path)
             text_message = text_group.to_msg(rotation=self.current_rotation)
             
-            # Store content for re-orientation
+            # Store content for re-transmission when rotation changes
             self.last_content = text_message
             self.last_content_type = ContentType.TEXT
             
@@ -223,7 +218,7 @@ class Screen:
             image = MediaImage(file_path=request.file_path)
             messages = image.to_msg(rotation=self.current_rotation, chunk_size=SPI_CHUNK_SIZE)
             
-            # Store content for re-orientation
+            # Store content for re-transmission when rotation changes
             self.last_content = messages
             self.last_content_type = ContentType.IMAGE
             
@@ -252,7 +247,7 @@ class Screen:
             # Generate protocol messages for all frames using to_msg()
             frame_message_lists = gif.to_msg(rotation=self.current_rotation, chunk_size=SPI_CHUNK_SIZE)
             
-            # Store content for re-orientation and setup GIF playback
+            # Store content for re-transmission when rotation changes and setup GIF playback
             self.last_content = frame_message_lists
             self.last_content_type = ContentType.GIF
             
@@ -314,7 +309,7 @@ class Screen:
             
             # Update rotation for current frame if rotation is enabled
             # Only the first message (ImageStartMessage) has rotation
-            if self.using_rotation and current_frame_messages and hasattr(current_frame_messages[0], 'rotation'):
+            if current_frame_messages and hasattr(current_frame_messages[0], 'rotation'):
                 current_frame_messages[0].rotation = self.current_rotation
             
             # Push frame to bus manager
@@ -339,26 +334,9 @@ class Screen:
             self.gif_messages = []
             self.gif_frame_index = 0
 
-    # -----------------------------------
-    # Rotation Management
-    # -----------------------------------
-    def set_rotation(self, rotation: Rotation):
-        """Manually set screen rotation and update content"""
-        if self.current_rotation == rotation:
-            return
-            
-        old_rotation = self.current_rotation
-        self.current_rotation = rotation
-        
-        self.node.get_logger().info(f'Screen {self.screen_id} rotation changed from {old_rotation} to {rotation}')
-        
-        # Update current content with new rotation
-        if self.last_content is not None:
-            self._resend_with_rotation()
-
     def _resend_with_rotation(self):
         """Re-send the last content with current rotation"""
-        if self.last_content is None or not self.using_rotation:
+        if self.last_content is None:
             return
             
         try:
@@ -386,27 +364,3 @@ class Screen:
                     self.setup_gif_replay(self.last_content)
         except Exception as e:
             self.node.get_logger().error(f"Error re-sending content with rotation: {e}")
-
-    def enable_rotation_tracking(self):
-        """Enable chassis-driven rotation tracking for this screen"""
-        if not self.using_rotation:
-            self.using_rotation = True
-            self._setup_pose_subscription()
-            self.node.get_logger().info(f"Chassis rotation tracking enabled for screen {self.screen_id}")
-
-    def disable_rotation_tracking(self):
-        """Disable chassis-driven rotation tracking for this screen"""
-        if self.using_rotation:
-            self.using_rotation = False
-            if self.pose_subscription:
-                # Subscription cleanup handled by ROS2 automatically
-                self.pose_subscription = None
-            self.node.get_logger().info(f"Chassis rotation tracking disabled for screen {self.screen_id}")
-
-    def get_rotation_status(self) -> dict:
-        """Get current rotation status information"""
-        return {
-            'using_rotation': self.using_rotation,
-            'current_rotation': self.current_rotation,
-            'chassis_pose_active': self.pose_subscription is not None
-        }

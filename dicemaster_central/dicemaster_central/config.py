@@ -8,8 +8,8 @@ screen_config_global: ScreenConfigGlobal class
 screen_configs: dict of id -> ScreenConfig instances
 """
 
-from typing import Dict, List
-from dataclasses import dataclass, field
+from typing import Dict
+from dataclasses import dataclass
 from dicemaster_central.constants import Rotation
 
 @dataclass
@@ -44,20 +44,18 @@ class IMUConfig:
     calibration_duration: float = 5.0
     polling_rate: int = 50
 
-@dataclass
 class DiceConfig:
-    active_spi_controllers: List[int] = field(default_factory=lambda: [0, 1, 3])
-    screen_configs: Dict[int, ScreenConfig] = field(default_factory=lambda: {
+    screen_configs: Dict[int, ScreenConfig] = {
         1: ScreenConfig(id=1, bus_id=0, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 1"),
         2: ScreenConfig(id=2, bus_id=0, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 2"),
         3: ScreenConfig(id=3, bus_id=1, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 3"),
         4: ScreenConfig(id=4, bus_id=1, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 4"),
         5: ScreenConfig(id=5, bus_id=3, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 5"),
         6: ScreenConfig(id=6, bus_id=3, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 6"),
-    })
-    global_screen_config: GlobalScreenConfig = field(default_factory=GlobalScreenConfig)
-    spi_config: SPIConfig = field(default_factory=SPIConfig)
-    imu_config: IMUConfig = field(default_factory=IMUConfig)
-
+    }
+    active_spi_controllers = set([s.bus_id for s in screen_configs.values()])
+    global_screen_config: GlobalScreenConfig = GlobalScreenConfig()
+    spi_config: SPIConfig = SPIConfig()
+    imu_config: IMUConfig = IMUConfig()
 
 dice_config = DiceConfig()
