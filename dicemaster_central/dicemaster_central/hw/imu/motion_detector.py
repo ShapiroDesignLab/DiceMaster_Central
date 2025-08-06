@@ -91,8 +91,9 @@ class MotionDetectorNode(Node):
         gyro_mean = np.mean(recent_gyro_magnitudes)
         gyro_shake = gyro_mean > self.shake_gyro_threshold
         
+        print("Shake vals:", gyro_shake, accel_shake)
         # Shaking detected if either acceleration variance is high or gyro activity is high
-        return accel_shake or gyro_shake
+        return bool(accel_shake or gyro_shake)
     
     def get_shake_intensity(self):
         """Calculate shake intensity (0.0 to 1.0)"""
@@ -206,7 +207,6 @@ def main(args=None):
             node.destroy_node()
         if executor is not None:
             executor.shutdown()
-        rclpy.shutdown()
 
 
 if __name__ == '__main__':

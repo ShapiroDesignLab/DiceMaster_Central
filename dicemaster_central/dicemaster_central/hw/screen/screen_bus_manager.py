@@ -276,9 +276,6 @@ def main(args=None):
             bus_manager.destroy_node()
         if executor is not None:
             executor.shutdown()
-        if rclpy.ok():
-            rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

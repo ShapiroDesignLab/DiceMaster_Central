@@ -131,8 +131,6 @@ def test_screen_media_service(test_config='single'):
             test_publisher.destroy_node()
         if executor is not None:
             executor.shutdown()
-        rclpy.shutdown()
-
 
 def test_single_screen():
     """Convenience function to test single screen (ID 1 only)"""

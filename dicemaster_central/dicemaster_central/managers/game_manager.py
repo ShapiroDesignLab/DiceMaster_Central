@@ -297,24 +297,22 @@ def main(args=None):
     """Main entry point for the game manager."""
     rclpy.init(args=args)
     
+    # Use MultiThreadedExecutor for service calls
+    executor = MultiThreadedExecutor()
+    game_manager = GameManager(executor)
+    executor.add_node(game_manager)
+    
     try:
-        # Use MultiThreadedExecutor for service calls
-        executor = MultiThreadedExecutor()
-        game_manager = GameManager(executor)
-        executor.add_node(game_manager)
-        
-        try:
-            executor.spin()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            game_manager.destroy_node()
-            
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
     except Exception as e:
         print(f"Error starting game manager: {e}")
     finally:
-        rclpy.shutdown()
-
+        if game_manager is not None:
+            game_manager.destroy_node()
+        if executor is not None:
+            executor.shutdown()
 
 if __name__ == '__main__':
     main()

@@ -578,8 +578,6 @@ def main(args=None):
             node.destroy_node()
         if executor is not None:
             executor.shutdown()
-        rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

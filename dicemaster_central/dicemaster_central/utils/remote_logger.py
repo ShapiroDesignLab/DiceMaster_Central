@@ -537,15 +537,36 @@ def main():
         from rclpy.executors import MultiThreadedExecutor
         rclpy.init()
     
-    # Parse command line arguments
+    # Parse command line arguments - filter out ROS-specific arguments
     import argparse
+    import sys
+    
+    # Filter out ROS arguments from sys.argv
+    filtered_args = []
+    skip_next = False
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == '--ros-args':
+            # Skip all remaining arguments as they're ROS-specific
+            break
+        if arg in ['-r', '--remap']:
+            skip_next = True
+            continue
+        if arg.startswith('--params-file'):
+            if '=' not in arg:
+                skip_next = True
+            continue
+        filtered_args.append(arg)
+    
     parser = argparse.ArgumentParser(description='DiceMaster Remote Logger')
     parser.add_argument('--port', type=int, default=8443, help='HTTPS port (default: 8443)')
     parser.add_argument('--max-logs', type=int, default=1000, help='Maximum logs to keep (default: 1000)')
     parser.add_argument('--cert', type=str, help='SSL certificate file path')
     parser.add_argument('--key', type=str, help='SSL private key file path')
     
-    args = parser.parse_args()
+    args = parser.parse_args(filtered_args)
     
     # Create and run the remote logger
     remote_logger = RemoteLogger(
@@ -585,8 +606,6 @@ def main():
             remote_logger.destroy_node()
         if executor is not None:
             executor.shutdown()
-        if ROS_AVAILABLE:
-            rclpy.shutdown()
 
 
 if __name__ == '__main__':
