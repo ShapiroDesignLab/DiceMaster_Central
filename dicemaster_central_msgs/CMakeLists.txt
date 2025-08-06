@@ -18,6 +18,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ScreenMediaCmd.msg"
   "msg/ChassisOrientation.msg"
   "msg/ScreenPose.msg"
+  "srv/GameControl.srv"
+  "srv/StrategyControl.srv"
   DEPENDENCIES builtin_interfaces std_msgs
 )
 

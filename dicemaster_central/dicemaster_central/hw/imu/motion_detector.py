@@ -10,7 +10,6 @@ for simplicity and better performance.
 Topics:
 - Subscribes to: /imu/data (sensor_msgs/Imu) - filtered IMU data from imu_tools
 - Publishes to: /imu/motion (MotionDetection) - motion detection results
-- Publishes to: /imu/motion/shaking (Bool) - shaking detection flag
 
 USAGE:
 ======
@@ -52,8 +51,6 @@ class MotionDetectorNode(Node):
         
         # Publishers
         self.motion_pub = self.create_publisher(MotionDetection, '/imu/motion', 10)
-        self.shaking_pub = self.create_publisher(Bool, '/imu/motion/shaking', 10)
-        self.shaking_pub = self.create_publisher(Bool, '/imu/motion/shaking', 10)
         
         # Subscriber to filtered IMU data from imu_tools filter
         self.imu_sub = self.create_subscription(

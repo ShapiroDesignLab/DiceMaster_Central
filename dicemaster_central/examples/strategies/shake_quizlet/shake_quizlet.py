@@ -294,7 +294,7 @@ class ShakeQuizletStrategy(BaseStrategy):
         # Subscribe to motion detection
         self.motion_subscription = self.create_subscription(
             MotionDetection,
-            '/dice_hw/imu/motion',
+            '/imu/motion',
             self._motion_callback,
             10
         )

@@ -13,8 +13,8 @@ Usage:
 Topics:
   - /imu/data_raw - Raw IMU data from hardware
   - /imu/data - Filtered IMU data with orientation
-  - /dice_hw/imu/motion - Motion detection results
-  - /dice_hw/imu/motion/* - Individual motion flags
+  - /imu/motion - Motion detection results
+  - /imu/motion/* - Individual motion flags
 """
 
 from launch import LaunchDescription

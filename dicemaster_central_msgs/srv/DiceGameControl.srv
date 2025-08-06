@@ -1,0 +1,9 @@
+# Dice game control service
+# Commands: "start", "stop", "list"
+string command
+string game_name  # Optional - used for start/restart commands
+---
+bool success
+string message
+string[] available_games  # Populated for "list" command
+string current_game  # Name of currently running game (if any)
