@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simplified test for Screen Media Service
+Simplified test for Screen Bus Managers
 Tests the complete pipeline from ROS message to screen display using existing test assets
 
 Two test configurations available:
@@ -14,26 +14,23 @@ Usage:
 """
 
 from pathlib import Path
+from typing import Dict
 
 import rclpy
 from rclpy.node import Node
+from rclpy.publisher import Publisher
 from dicemaster_central_msgs.msg import ScreenMediaCmd
 from dicemaster_central.constants import ContentType
-from dicemaster_central.hw.screen.screen_media_service import ScreenMediaService
 
 
 class ScreenMediaTestPublisher(Node):
-    """Test node that publishes media commands to test the screen service"""
+    """Test node that publishes media commands to test the screen bus managers"""
     
     def __init__(self, test_config='single'):
         super().__init__('screen_media_test_publisher')
         
-        # Publisher for media commands
-        self.publisher = self.create_publisher(
-            ScreenMediaCmd,
-            '/screen_media_cmd',
-            10
-        )
+        # Publishers for each screen (will be created as needed)
+        self.publishers: Dict[int, Publisher] = {}
         
         # Test assets directory (use existing assets)
         self.test_assets_dir = Path(__file__).parent / 'test_assets'
@@ -71,6 +68,18 @@ class ScreenMediaTestPublisher(Node):
         self.get_logger().info(f"Screen Media Test Publisher started with {len(self.test_sequence)} test cases")
         self.get_logger().info(f"Using test assets from: {self.test_assets_dir}")
 
+    def _get_publisher(self, screen_id: int):
+        """Get or create publisher for a specific screen ID"""
+        if screen_id not in self.publishers:
+            topic_name = f'/screen_{screen_id}_cmd'
+            self.publishers[screen_id] = self.create_publisher(
+                ScreenMediaCmd,
+                topic_name,
+                10
+            )
+            self.get_logger().info(f"Created publisher for {topic_name}")
+        return self.publishers[screen_id]
+
     def _publish_test_command(self):
         """Publish the next test command"""
         if self.current_test_index >= self.max_tests:
@@ -87,7 +96,9 @@ class ScreenMediaTestPublisher(Node):
         msg.media_type = test_case['media_type']
         msg.file_path = test_case['file_path']
         
-        self.publisher.publish(msg)
+        # Get the appropriate publisher for this screen and publish
+        publisher = self._get_publisher(test_case['screen_id'])
+        publisher.publish(msg)
         
         self.get_logger().info(
             f"Published test {self.current_test_index + 1}/{self.max_tests}: "
@@ -98,45 +109,28 @@ class ScreenMediaTestPublisher(Node):
 
 
 def test_screen_media_service(test_config='single'):
-    """Main test function that runs both service and test publisher
+    """Test function to run the screen media test with discrete bus managers"""
+    from rclpy.executors import MultiThreadedExecutor
     
-    Args:
-        test_config (str): 'single' for single screen test (ID 1) or 'multi' for multiple screens (IDs 1,2,4)
-    """
-    print(f"Starting Screen Media Service Test - {test_config.upper()} configuration")
-    print("This test will:")
-    print("- Start the screen media service")
-    print("- Publish media commands every 3 seconds")
-    if test_config == 'single':
-        print("- Test ONLY screen ID 1 with different media types")
-        print("- Perfect for testing with only one screen connected")
-    else:
-        print("- Test screen IDs 1, 2, and 4 with different media types")
-        print("- Use this when you have multiple screens connected")
-    print()
-    
-    # Initialize ROS2
     rclpy.init()
     
+    test_publisher = None
+    executor = None
     try:
-        # Create both the service and test publisher
-        screen_service = ScreenMediaService()
-        test_publisher = ScreenMediaTestPublisher(test_config=test_config)
+        test_publisher = ScreenMediaTestPublisher(test_config)
         
-        # Use MultiThreadedExecutor to avoid timer blocking
-        from rclpy.executors import MultiThreadedExecutor
-        executor = MultiThreadedExecutor(num_threads=4)
-        executor.add_node(screen_service)
+        # Use multithreaded executor
+        executor = MultiThreadedExecutor()
         executor.add_node(test_publisher)
-        
-        print("Running test with MultiThreadedExecutor... Press Ctrl+C to stop")
         executor.spin()
         
     except KeyboardInterrupt:
-        print("\nTest interrupted by user")
-    except Exception as e:
-        print(f"Test error: {e}")
+        pass
     finally:
+        if test_publisher is not None:
+            test_publisher.destroy_node()
+        if executor is not None:
+            executor.shutdown()
         rclpy.shutdown()
 
 

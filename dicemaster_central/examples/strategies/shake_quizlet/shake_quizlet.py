@@ -82,7 +82,7 @@ class ShakeQuizletStrategy(BaseStrategy):
         self.last_shake_time = 0.0
         
         # ROS components (will be created in start_strategy)
-        self.screen_media_publisher = None
+        self.screen_publishers = {}
         self.motion_subscription = None
         self.chassis_subscription = None
         self.screen_pose_subscription = None
@@ -149,6 +149,18 @@ class ShakeQuizletStrategy(BaseStrategy):
         # Shuffle cards for random order
         random.shuffle(self.quizlet_cards)
     
+    def _get_screen_publisher(self, screen_id: int):
+        """Get or create publisher for a specific screen ID"""
+        if screen_id not in self.screen_publishers:
+            topic_name = f'/screen_{screen_id}_cmd'
+            self.screen_publishers[screen_id] = self.create_publisher(
+                ScreenMediaCmd,
+                topic_name,
+                10
+            )
+            self.get_logger().info(f"Created publisher for {topic_name}")
+        return self.screen_publishers[screen_id]
+    
     def _update_screen_assignments(self, chassis_msg: ChassisOrientation):
         """Update which screens are top/bottom based on chassis orientation."""
         self.top_screen_id = chassis_msg.top_screen_id
@@ -172,10 +184,6 @@ class ShakeQuizletStrategy(BaseStrategy):
             self.get_logger().warn("Screen assignments not ready")
             return
         
-        if self.screen_media_publisher is None:
-            self.get_logger().warn("Screen media publisher not initialized")
-            return
-        
         current_card = self.quizlet_cards[self.current_card_index]
         
         # Display question on top screen
@@ -184,14 +192,20 @@ class ShakeQuizletStrategy(BaseStrategy):
             question_msg.screen_id = self.top_screen_id
             question_msg.media_type = ContentType.TEXT
             question_msg.file_path = self.question_file_path
-            self.screen_media_publisher.publish(question_msg)
+            
+            # Get publisher for top screen and publish
+            top_publisher = self._get_screen_publisher(self.top_screen_id)
+            top_publisher.publish(question_msg)
         
         # Display answer on bottom screen
         answer_msg = ScreenMediaCmd()
         answer_msg.screen_id = self.bottom_screen_id
         answer_msg.media_type = ContentType.TEXT
         answer_msg.file_path = current_card['answer_path']
-        self.screen_media_publisher.publish(answer_msg)
+        
+        # Get publisher for bottom screen and publish
+        bottom_publisher = self._get_screen_publisher(self.bottom_screen_id)
+        bottom_publisher.publish(answer_msg)
         
         # Display hint images on side screens
         self._display_hint_images(current_card)
@@ -202,10 +216,6 @@ class ShakeQuizletStrategy(BaseStrategy):
         """Display hint images on side screens in random order."""
         if not self.side_screen_ids or len(self.side_screen_ids) < 4:
             self.get_logger().warn("Not enough side screens for hint images")
-            return
-        
-        if self.screen_media_publisher is None:
-            self.get_logger().warn("Screen media publisher not initialized")
             return
         
         # Select up to 4 images randomly
@@ -224,7 +234,10 @@ class ShakeQuizletStrategy(BaseStrategy):
             image_msg.screen_id = screen_id
             image_msg.media_type = ContentType.IMAGE
             image_msg.file_path = image_path
-            self.screen_media_publisher.publish(image_msg)
+            
+            # Get publisher for this screen and publish
+            screen_publisher = self._get_screen_publisher(screen_id)
+            screen_publisher.publish(image_msg)
         
         self.get_logger().info(f"Displayed {len(selected_images)} hint images on side screens")
     
@@ -284,13 +297,6 @@ class ShakeQuizletStrategy(BaseStrategy):
     
     def start_strategy(self):
         """Start the shake quizlet strategy."""
-        # Create publisher for screen media commands
-        self.screen_media_publisher = self.create_publisher(
-            ScreenMediaCmd,
-            '/screen_media_cmd',
-            10
-        )
-        
         # Subscribe to motion detection
         self.motion_subscription = self.create_subscription(
             MotionDetection,
@@ -341,10 +347,11 @@ class ShakeQuizletStrategy(BaseStrategy):
             self.screen_pose_subscription.destroy()
             self.screen_pose_subscription = None
         
-        # Destroy publisher
-        if self.screen_media_publisher:
-            self.screen_media_publisher.destroy()
-            self.screen_media_publisher = None
+        # Destroy publishers
+        for screen_id, publisher in self.screen_publishers.items():
+            if publisher:
+                publisher.destroy()
+        self.screen_publishers = {}
         
         self.get_logger().info("ShakeQuizletStrategy stopped")
 

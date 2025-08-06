@@ -25,7 +25,7 @@ def build_notification(content: str, notif_level: str, screen_id: int) -> Screen
         screen_id: The target screen ID for the notification
         
     Returns:
-        ScreenMediaCmd: Message ready to be published to screen_media_service
+        ScreenMediaCmd: Message ready to be published to screen_{id}_cmd
         
     Raises:
         ValueError: If notif_level is not supported
