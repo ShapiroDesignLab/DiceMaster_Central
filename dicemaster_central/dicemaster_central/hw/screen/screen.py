@@ -47,12 +47,12 @@ class Screen:
     def __init__(self,
         node, 
         screen_id: int,
-        bus_manager_queue
+        bus_manager
     ):
         # Basic properties
         self.screen_id = screen_id
         self.node = node
-        self.bus_manager_queue = bus_manager_queue
+        self.bus_manager = bus_manager
         self.current_rotation = Rotation.ROTATION_0
         
         # Content management
@@ -146,7 +146,7 @@ class Screen:
         if not isinstance(msgs, list):
             msgs = [msgs]
         for msg in msgs:
-            self.bus_manager_queue.put((self.screen_id, msg, priority))
+            self.bus_manager.queue_protocol_message(self.screen_id, msg, priority)
 
     def _get_next_request_id(self) -> int:
         """Generate next request ID"""

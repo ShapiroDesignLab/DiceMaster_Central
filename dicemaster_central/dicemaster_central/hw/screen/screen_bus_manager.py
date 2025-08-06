@@ -65,8 +65,6 @@ class ScreenBusManager(Node):
                 node=self,
                 screen_id=screen_config.id,
                 bus_manager=self,
-                using_rotation=self.global_settings.auto_rotate,
-                rotation_margin=self.global_settings.rotation_margin
             ) for screen_config in self.screen_configs.values()
         }  # screen_id -> Screen instance
         
@@ -119,7 +117,7 @@ class ScreenBusManager(Node):
         self.transmission_thread = threading.Thread(target=self._transmission_worker, daemon=True)
         self.transmission_thread.start()
         
-        self.node.get_logger().info(f"Started bus manager for bus {self.bus_id}")
+        self.get_logger().info(f"Started bus manager for bus {self.bus_id}")
 
     def stop(self):
         """Stop the bus manager"""
@@ -133,7 +131,7 @@ class ScreenBusManager(Node):
         
         # Stop
         self.running = False
-        self.node.get_logger().info(f"Stopped bus manager for bus {self.bus_id}")
+        self.get_logger().info(f"Stopped bus manager for bus {self.bus_id}")
     
     def _handle_media_command(self, msg: ScreenMediaCmd):
         """Convert a ScreenMediaCmd message into a media request and send to respective screen"""
@@ -147,7 +145,7 @@ class ScreenBusManager(Node):
     def queue_protocol_message(self, screen_id: int, message: ProtocolMessage, priority: int = MessagePriority.NORMAL) -> bool:
         """Queue a protocol message for transmission"""
         if screen_id not in self.screen_configs.keys():
-            self.node.get_logger().warn(f"Invalid screen ID {screen_id} for bus {self.bus_id}")
+            self.get_logger().warn(f"Invalid screen ID {screen_id} for bus {self.bus_id}")
             return False
 
         # Create queued message
@@ -163,7 +161,7 @@ class ScreenBusManager(Node):
     
     def _transmission_worker(self):
         """Worker thread for transmitting messages"""
-        self.node.get_logger().debug(f"Transmission worker started for bus {self.bus_id}")
+        self.get_logger().debug(f"Transmission worker started for bus {self.bus_id}")
         
         while self.running:
             try:
@@ -181,26 +179,26 @@ class ScreenBusManager(Node):
                     self.stats['bytes_transmitted'] += len(queued_msg.message.payload)
                 else:
                     self.stats['messages_failed'] += 1
-                    self.node.get_logger().warn(f"Failed to transmit message to screen {queued_msg.screen_id}")
+                    self.get_logger().warn(f"Failed to transmit message to screen {queued_msg.screen_id}")
                 
                 self.stats['last_activity'] = time.time()
                 
                 # Small delay to prevent overwhelming the bus
                 time.sleep(0.001)
 
-                self.node.get_logger().info(f"Last run took {(perf_counter() - st):.4f}s")
+                self.get_logger().info(f"Last run took {(perf_counter() - st):.4f}s")
                 
             except Empty:
                 # No messages to process
                 continue
             except Exception as e:
-                self.node.get_logger().error(f"Error in transmission worker: {e}")
+                self.get_logger().error(f"Error in transmission worker: {e}")
 
     def _transmit_message(self, queued_msg: QueuedMessage) -> bool:
         """Transmit a single message to a screen"""
         screen_id = queued_msg.screen_id
         if screen_id not in self.screen_configs.keys():
-            self.node.get_logger().warn(f"Invalid screen ID {screen_id} for bus {self.bus_id}")
+            self.get_logger().warn(f"Invalid screen ID {screen_id} for bus {self.bus_id}")
             return False
 
         spi_device = self.spi_devices[screen_id]
@@ -220,7 +218,7 @@ class ScreenBusManager(Node):
             return True
                 
         except Exception as e:
-            self.node.get_logger().error(f"SPI transmission error for screen {screen_id}: {e}")
+            self.get_logger().error(f"SPI transmission error for screen {screen_id}: {e}")
             spi_device.down()  # Ensure device is closed
             return False
 
@@ -252,20 +250,32 @@ def main(args=None):
         sys.exit(1)
     
     import rclpy
+    from rclpy.executors import MultiThreadedExecutor
+    
     rclpy.init(args=args)
     
+    bus_manager = None
+    executor = None
     try:
         bus_manager = ScreenBusManager(bus_id)
         bus_manager.start()
         
         bus_manager.get_logger().info(f"Starting ScreenBusManager for bus {bus_id}")
-        rclpy.spin(bus_manager)
+        
+        # Use multithreaded executor
+        executor = MultiThreadedExecutor()
+        executor.add_node(bus_manager)
+        executor.spin()
         
     except KeyboardInterrupt:
         pass
     except Exception as e:
         print(f"Error running screen bus manager for bus {bus_id}: {e}")
     finally:
+        if bus_manager is not None:
+            bus_manager.destroy_node()
+        if executor is not None:
+            executor.shutdown()
         if rclpy.ok():
             rclpy.shutdown()
 

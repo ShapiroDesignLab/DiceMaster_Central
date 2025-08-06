@@ -13,13 +13,11 @@ find_package(rosidl_default_generators REQUIRED)
 
 # Generate interface files
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/MotionDetection.msg"
-  "msg/NotificationRequest.msg"
-  "msg/ScreenMediaCmd.msg"
   "msg/ChassisOrientation.msg"
+  "msg/MotionDetection.msg"
+  "msg/ScreenMediaCmd.msg"
   "msg/ScreenPose.msg"
-  "srv/GameControl.srv"
-  "srv/StrategyControl.srv"
+  "srv/DiceGameControl.srv"
   DEPENDENCIES builtin_interfaces std_msgs
 )
 

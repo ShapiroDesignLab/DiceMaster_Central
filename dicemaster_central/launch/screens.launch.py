@@ -31,7 +31,7 @@ def generate_launch_description():
         # Create node for this bus
         node = Node(
             package='dicemaster_central',
-            executable='screen_bus_manager',
+            executable='screen_bus_manager.py',
             name=f'screen_bus_manager_{bus_id}',
             namespace='',
             parameters=[{
@@ -43,9 +43,7 @@ def generate_launch_description():
         )
         
         nodes.append(node)
-        
         print(f"Launching ScreenBusManager for bus {bus_id} with screens {screen_ids}")
-    
     if not nodes:
         print("Warning: No screen bus managers to launch. Check your dice_config.")
     else:

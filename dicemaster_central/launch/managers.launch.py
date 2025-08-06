@@ -1,27 +1,38 @@
 #!/usr/bin/env python3
 """
-Launch script for the DiceMaster Notification Manager
+Launch script for the DiceMaster Game Manager
+
+This launch file starts the game manager which handles:
+1. Game discovery and loading
+2. Strategy management and lifecycle
+3. Game control service (/game_control)
+
+Usage:
+  ros2 launch dicemaster_central managers.launch.py
+
+Services:
+  - /game_control - Control games (start, stop, list, restart)
 """
 
-import rclpy
-from rclpy.node import Node
-from dicemaster_central.managers.notifications import NotificationManager
+from launch import LaunchDescription
+from launch_ros.actions import Node
 
 
-def main():
-    """Launch the notification manager"""
-    rclpy.init()
+def generate_launch_description():
     
-    # Create and start notification manager
-    notification_manager = NotificationManager()
-    
-    try:
-        rclpy.spin(notification_manager)
-    except KeyboardInterrupt:
-        notification_manager.get_logger().info('Notification Manager shutting down')
-    finally:
-        notification_manager.destroy_node()
-        rclpy.shutdown()
+    # Game Manager Node
+    game_manager_node = Node(
+        package='dicemaster_central',
+        executable='game_manager.py',
+        name='game_manager',
+        output='screen',
+        parameters=[{
+            # Parameters loaded from dice_config automatically
+        }]
+    )
 
-if __name__ == '__main__':
-    main()
+    print("Launching Managers")
+    
+    return LaunchDescription([
+        game_manager_node,
+    ])

@@ -534,6 +534,7 @@ class RemoteLogger(Node):
 def main():
     """Main function for running the remote logger"""
     if ROS_AVAILABLE:
+        from rclpy.executors import MultiThreadedExecutor
         rclpy.init()
     
     # Parse command line arguments
@@ -554,6 +555,7 @@ def main():
         key_file=args.key
     )
     
+    executor = None
     try:
         # Run both ROS and asyncio
         loop = asyncio.new_event_loop()
@@ -563,9 +565,11 @@ def main():
         server_task = loop.create_task(remote_logger.start_server())
         
         if ROS_AVAILABLE:
-            # Run ROS in main thread
+            # Use multithreaded executor for ROS
             def ros_spin():
-                rclpy.spin(remote_logger)
+                executor = MultiThreadedExecutor()
+                executor.add_node(remote_logger)
+                executor.spin()
             
             ros_thread = threading.Thread(target=ros_spin, daemon=True)
             ros_thread.start()
@@ -577,7 +581,10 @@ def main():
         print("Shutting down...")
     finally:
         remote_logger.stop_server()
-        remote_logger.destroy_node()
+        if remote_logger is not None:
+            remote_logger.destroy_node()
+        if executor is not None:
+            executor.shutdown()
         if ROS_AVAILABLE:
             rclpy.shutdown()
 

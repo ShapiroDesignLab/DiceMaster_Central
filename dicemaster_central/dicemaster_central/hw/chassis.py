@@ -556,16 +556,28 @@ class ChassisNode(Node):
 
 
 def main(args=None):
+    import rclpy
+    from rclpy.executors import MultiThreadedExecutor
+    
     rclpy.init(args=args)
     
-    node = ChassisNode()
-    
+    node = None
+    executor = None
     try:
-        rclpy.spin(node)
+        node = ChassisNode()
+        
+        # Use multithreaded executor
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()
+        
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
+        if executor is not None:
+            executor.shutdown()
         rclpy.shutdown()
 
 

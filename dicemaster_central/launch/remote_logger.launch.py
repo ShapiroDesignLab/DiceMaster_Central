@@ -41,7 +41,7 @@ def generate_launch_description():
     launch_nodes.append(
         Node(
             package='dicemaster_central',
-            executable='remote_logger',
+            executable='remote_logger.py',
             name='remote_logger_node',
             parameters=[{
                 'port': LaunchConfiguration('port'),

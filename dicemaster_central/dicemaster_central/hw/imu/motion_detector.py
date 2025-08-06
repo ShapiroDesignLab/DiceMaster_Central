@@ -25,7 +25,7 @@ MOTION TYPES DETECTED:
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
-from std_msgs.msg import Bool, Header
+from std_msgs.msg import Header
 
 import numpy as np
 from collections import deque
@@ -182,22 +182,30 @@ class MotionDetectorNode(Node):
         motion_msg.stillness_factor = motion_summary['stillness_factor']
         
         self.motion_pub.publish(motion_msg)
-        
-        # Publish only shaking flag individually
-        self.shaking_pub.publish(Bool(data=motion_summary['shaking']))
 
 
 def main(args=None):
+    from rclpy.executors import MultiThreadedExecutor
+    
     rclpy.init(args=args)
     
-    node = MotionDetectorNode()
-    
+    node = None
+    executor = None
     try:
-        rclpy.spin(node)
+        node = MotionDetectorNode()
+        
+        # Use multithreaded executor
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()
+        
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
+        if executor is not None:
+            executor.shutdown()
         rclpy.shutdown()
 
 

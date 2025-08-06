@@ -457,17 +457,28 @@ class IMUHardwareNode(Node):
 
 
 def main(args=None):
+    from rclpy.executors import MultiThreadedExecutor
+    
     rclpy.init(args=args)
     
-    node = IMUHardwareNode()
-    
+    node = None
+    executor = None
     try:
-        rclpy.spin(node)
+        node = IMUHardwareNode()
+        
+        # Use multithreaded executor
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()
+        
     except KeyboardInterrupt:
         pass
     finally:
-        node.close()
-        node.destroy_node()
+        if node is not None:
+            node.close()
+            node.destroy_node()
+        if executor is not None:
+            executor.shutdown()
         rclpy.shutdown()
 
 

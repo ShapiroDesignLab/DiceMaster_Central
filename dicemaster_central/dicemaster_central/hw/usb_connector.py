@@ -179,16 +179,27 @@ class USBConnectorCheckerNode(Node):
 
 def main(args=None):
     """Main entry point for the USB connector checker node"""
+    from rclpy.executors import MultiThreadedExecutor
+    
     rclpy.init(args=args)
     
-    node = USBConnectorCheckerNode()
-    
+    node = None
+    executor = None
     try:
-        rclpy.spin(node)
+        node = USBConnectorCheckerNode()
+        
+        # Use multithreaded executor
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()
+        
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
+        if executor is not None:
+            executor.shutdown()
         rclpy.shutdown()
 
 

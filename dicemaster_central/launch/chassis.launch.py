@@ -62,6 +62,8 @@ def generate_launch_description():
             output='screen'
         )
     )
+
+    print("Launching Chassis")
     
     return LaunchDescription(launch_nodes)
 

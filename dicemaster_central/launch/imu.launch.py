@@ -83,15 +83,12 @@ def generate_launch_description():
     )
     
     # Motion Detector Node (commented out for now)
-    # motion_detector_node = Node(
-    #     package='dicemaster_central',
-    #     executable='motion_detector_node',
-    #     name='motion_detector',
-    #     output='screen',
-    #     parameters=[{
-    #         # Motion detector parameters (if any)
-    #     }]
-    # )
+    motion_detector_node = Node(
+        package='dicemaster_central',
+        executable='motion_detector.py',
+        name='motion_detector',
+    )
+    print("Launching IMU")
     
     return LaunchDescription([
         # Launch arguments
@@ -102,5 +99,5 @@ def generate_launch_description():
         # Nodes
         imu_hardware_node,
         imu_filter_node,
-        # motion_detector_node,  # Uncomment when motion detector is ready
+        motion_detector_node,  # Uncomment when motion detector is ready
     ])
