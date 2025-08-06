@@ -6,7 +6,6 @@ Captures ROS logs and serves them via HTTPS web interface
 import asyncio
 import ssl
 import json
-import logging
 import os
 import re
 import subprocess

@@ -9,8 +9,6 @@ Publishes battery level percentage to /hw/battery_level topic.
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32, String
-import time
-
 
 class BatteryCheckerNode(Node):
     """ROS2 node for battery level monitoring"""

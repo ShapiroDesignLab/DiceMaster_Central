@@ -99,14 +99,12 @@ class Screen:
             return
             
         new_rotation = Rotation(msg.rotation)
-        
-        # Check if rotation changed
         if new_rotation == self.current_rotation:
             return
-    
+
+        # Update bottom rotation and resend
         old_rotation = self.current_rotation
         self.current_rotation = new_rotation
-        
         self.node.get_logger().info(
             f'Screen {self.screen_id} rotation updated from {old_rotation} to {new_rotation} '
             f'(up_alignment: {msg.up_alignment:.3f}, facing_up: {msg.is_facing_up})'

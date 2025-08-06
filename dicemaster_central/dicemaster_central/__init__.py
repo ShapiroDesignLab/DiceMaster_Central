@@ -3,4 +3,5 @@ from .constants import *
 from .hw import *
 from .managers import *
 from .media_typing import *
-from .strategies import *
+from .utils import *
+from .games import BaseStrategy, DiceGame

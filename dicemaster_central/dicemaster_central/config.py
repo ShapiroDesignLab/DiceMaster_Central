@@ -7,7 +7,7 @@ spi_config: SPIConfig class
 screen_config_global: ScreenConfigGlobal class
 screen_configs: dict of id -> ScreenConfig instances
 """
-
+import os
 from typing import Dict
 from dataclasses import dataclass
 from dicemaster_central.constants import Rotation
@@ -44,6 +44,14 @@ class IMUConfig:
     calibration_duration: float = 5.0
     polling_rate: int = 50
 
+class GameConfig:
+    default_game_locations=[os.path.expanduser("~/.dicemaster/games")]
+    default_strategy_locations=[
+        os.path.expanduser("~/.dicemaster/strategies"),
+        os.path.join(os.path.dirname(__file__), "strategies")
+    ]
+    default_game="shake_story"
+    
 class DiceConfig:
     screen_configs: Dict[int, ScreenConfig] = {
         1: ScreenConfig(id=1, bus_id=0, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 1"),
@@ -57,5 +65,6 @@ class DiceConfig:
     global_screen_config: GlobalScreenConfig = GlobalScreenConfig()
     spi_config: SPIConfig = SPIConfig()
     imu_config: IMUConfig = IMUConfig()
+    game_config = GameConfig()
 
 dice_config = DiceConfig()

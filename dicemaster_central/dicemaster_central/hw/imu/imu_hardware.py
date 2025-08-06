@@ -88,7 +88,7 @@ class IMUHardwareNode(Node):
         # Calibration service
         self.calibration_service = self.create_service(
             Empty,
-            '/dice_hw/imu/calibrate',
+            '/imu/calibrate',
             self.calibrate_service_callback
         )
         

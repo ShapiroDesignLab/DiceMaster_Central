@@ -136,13 +136,13 @@ class ErrorCode(IntEnum):
     ERROR_TOO_SHORT = 0x91
     ERROR_TEXT_TRUNCATED = 0x92
 
-
 # Media Types
 ContentTypeExts = {
-    ContentType.TEXT: ['txt', 'md', 'rtf'],
-    ContentType.IMAGE: ['jpg', 'png', 'jpeg', 'bmp', 'heic', 'heif'],
-    ContentType.GIF: [''],
+    ContentType.TEXT: ['json'],
+    ContentType.IMAGE: ['jpg', 'jpeg'],
+    ContentType.GIF: ['gif.d'],
 }
+
 README_REGEX_PATTERN = r'^(?i:readme).*'
 MAX_TEXT_NUM_BYTES = 255
 
