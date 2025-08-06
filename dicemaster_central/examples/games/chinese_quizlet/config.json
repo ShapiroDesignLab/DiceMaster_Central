@@ -1,0 +1,5 @@
+{
+    "game_name": "chinese_quizlet",
+    "strategy": "shake_quizlet",
+    "strategy_config": {}
+}

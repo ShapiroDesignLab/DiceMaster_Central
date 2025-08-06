@@ -1,0 +1,26 @@
+{
+    "bg_color": "0x0000",
+    "texts": [
+        {
+            "x_cursor": 120,
+            "y_cursor": 180, 
+            "font_name": "tf",
+            "font_color": "0xFFFF",
+            "text": "What is this in Chinese?"
+        },
+        {
+            "x_cursor": 200,
+            "y_cursor": 240, 
+            "font_name": "chinese",
+            "font_color": "0xFFFF",
+            "text": "这是什么？"
+        },
+        {
+            "x_cursor": 120,
+            "y_cursor": 420, 
+            "font_name": "chinese",
+            "font_color": "0xFFFF",
+            "text": "Shake to change question"
+        }
+    ]
+}

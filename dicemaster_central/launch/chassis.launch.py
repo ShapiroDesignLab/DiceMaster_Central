@@ -21,34 +21,14 @@ def generate_launch_description():
             description='Path to the dice URDF file'
         ),
         DeclareLaunchArgument(
-            'base_frame',
-            default_value='base_link',
-            description='Base frame ID for the robot'
-        ),
-        DeclareLaunchArgument(
-            'imu_frame',
-            default_value='imu_link',
-            description='IMU frame ID'
-        ),
-        DeclareLaunchArgument(
-            'world_frame',
-            default_value='world',
-            description='World frame ID'
-        ),
-        DeclareLaunchArgument(
             'publish_rate',
             default_value='50.0',
             description='Publishing rate in Hz for chassis'
         ),
         DeclareLaunchArgument(
-            'auto_start_rviz',
-            default_value='false',
-            description='Automatically start RViz for visualization'
-        ),
-        DeclareLaunchArgument(
-            'enable_screen_orientation',
+            'publish_to_topics',
             default_value='true',
-            description='Enable screen orientation detection and publishing'
+            description='Enable publishing to topics'
         ),
     ])
     
@@ -56,18 +36,12 @@ def generate_launch_description():
     launch_nodes.append(
         Node(
             package='dicemaster_central',
-            executable='chassis_node',
+            executable='chassis.py',
             name='dice_chassis_node',
             parameters=[{
-                'base_frame': LaunchConfiguration('base_frame'),
-                'imu_frame': LaunchConfiguration('imu_frame'),
-                'world_frame': LaunchConfiguration('world_frame'),
                 'publish_rate': LaunchConfiguration('publish_rate'),
-                'enable_screen_orientation': LaunchConfiguration('enable_screen_orientation'),
-                'imu_topic': '/imu/data',
-                'alternative_imu_topic': '/data/imu',
+                'publish_to_topics': LaunchConfiguration('publish_to_topics'),
             }],
-            output='screen'
         )
     )
     
@@ -86,18 +60,6 @@ def generate_launch_description():
                 'robot_description': robot_description_content
             }],
             output='screen'
-        )
-    )
-    
-    # RViz for visualization (conditional)
-    launch_nodes.append(
-        Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2',
-            arguments=['-d', '/home/dice/DiceMaster/DiceMaster_Central/dicemaster_central/resource/dice_visualization.rviz'],
-            output='screen',
-            condition=IfCondition(LaunchConfiguration('auto_start_rviz'))
         )
     )
     

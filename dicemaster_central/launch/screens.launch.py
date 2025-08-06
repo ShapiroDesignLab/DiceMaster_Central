@@ -12,8 +12,7 @@ from launch_ros.actions import Node
 import sys
 
 # Add the package to Python path to import config
-sys.path.append('/home/dice/DiceMaster/DiceMaster_Central/dicemaster_central')
-
+# sys.path.append('/home/dice/DiceMaster/DiceMaster_Central/dicemaster_central')
 from dicemaster_central.config import dice_config
 
 
@@ -22,20 +21,11 @@ def generate_launch_description():
     
     # Get active SPI buses from config
     active_buses = dice_config.active_spi_controllers
-    
-    # Get screen configs to verify which buses are actually used
-    used_buses = set()
-    for screen_config in dice_config.screen_configs:
-        used_buses.add(screen_config.bus_id)
-    
-    # Only launch bus managers for buses that are both active and have screens
-    buses_to_launch = set(active_buses).intersection(used_buses)
-    
     nodes = []
     
-    for bus_id in buses_to_launch:
+    for bus_id in active_buses:
         # Count screens on this bus for logging
-        screens_on_bus = [cfg for cfg in dice_config.screen_configs if cfg.bus_id == bus_id]
+        screens_on_bus = [cfg for cfg in dice_config.screen_configs.values() if cfg.bus_id == bus_id]
         screen_ids = [cfg.id for cfg in screens_on_bus]
         
         # Create node for this bus
@@ -71,15 +61,15 @@ if __name__ == '__main__':
     print("=== Screen Launch Configuration ===")
     print(f"Active SPI controllers: {dice_config.active_spi_controllers}")
     print("Screen configurations:")
-    for cfg in dice_config.screen_configs:
+    for cfg in dice_config.screen_configs.values():
         print(f"  Screen {cfg.id}: bus={cfg.bus_id}, dev={cfg.bus_dev_id}")
     
     # Show what would be launched
     active_buses = dice_config.active_spi_controllers
-    used_buses = set(cfg.bus_id for cfg in dice_config.screen_configs)
+    used_buses = set(cfg.bus_id for cfg in dice_config.screen_configs.values())
     buses_to_launch = set(active_buses).intersection(used_buses)
     
     print(f"Buses to launch: {sorted(buses_to_launch)}")
     for bus_id in sorted(buses_to_launch):
-        screens = [cfg.id for cfg in dice_config.screen_configs if cfg.bus_id == bus_id]
+        screens = [cfg.id for cfg in dice_config.screen_configs.values() if cfg.bus_id == bus_id]
         print(f"  Bus {bus_id}: screens {screens}")

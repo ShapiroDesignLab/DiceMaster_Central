@@ -1,0 +1,12 @@
+{
+    "bg_color": "0x0000",
+    "texts": [
+        {
+            "x_cursor": 200,
+            "y_cursor": 240, 
+            "font_name": "chinese",
+            "font_color": "0xFFFF",
+            "text": "猫,"
+        }
+    ]
+}
