@@ -13,19 +13,19 @@ def generate_launch_description():
     # Get package share directory
     pkg_share = get_package_share_directory('dicemaster_central')
     
-    # Add launch arguments
-    launch_nodes.extend([
-        DeclareLaunchArgument(
-            'enable_remote_logger',
-            default_value='true',
-            description='Enable remote logger for web-based log viewing'
-        ),
-        DeclareLaunchArgument(
-            'remote_logger_port',
-            default_value='8443',
-            description='HTTPS port for remote logger web interface'
-        ),
-    ])
+    # # Add launch arguments
+    # launch_nodes.extend([
+    #     DeclareLaunchArgument(
+    #         'enable_remote_logger',
+    #         default_value='true',
+    #         description='Enable remote logger for web-based log viewing'
+    #     ),
+    #     DeclareLaunchArgument(
+    #         'remote_logger_port',
+    #         default_value='8443',
+    #         description='HTTPS port for remote logger web interface'
+    #     ),
+    # ])
     
     # 1. Include IMU launch file
     launch_nodes.append(
@@ -63,17 +63,17 @@ def generate_launch_description():
         )
     )
     
-    # 5. Include Remote Logger launch file (conditional)
-    launch_nodes.append(
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([
-                os.path.join(pkg_share, 'launch', 'remote_logger.launch.py')
-            ]),
-            launch_arguments={
-                'port': LaunchConfiguration('remote_logger_port'),
-            }.items(),
-            condition=IfCondition(LaunchConfiguration('enable_remote_logger'))
-        )
-    )
+    # # 5. Include Remote Logger launch file (conditional)
+    # launch_nodes.append(
+    #     IncludeLaunchDescription(
+    #         PythonLaunchDescriptionSource([
+    #             os.path.join(pkg_share, 'launch', 'remote_logger.launch.py')
+    #         ]),
+    #         launch_arguments={
+    #             'port': LaunchConfiguration('remote_logger_port'),
+    #         }.items(),
+    #         condition=IfCondition(LaunchConfiguration('enable_remote_logger'))
+    #     )
+    # )
     
     return LaunchDescription(launch_nodes)
