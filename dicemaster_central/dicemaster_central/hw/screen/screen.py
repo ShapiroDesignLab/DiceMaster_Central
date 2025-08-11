@@ -191,7 +191,7 @@ class Screen:
             
             # Use TextGroup to load and validate JSON configuration
             text_group = TextGroup(file_path=request.file_path)
-            text_message = text_group.to_msg(rotation=self.current_rotation)
+            text_message = text_group.to_msg(rotation=self.current_rotation, screen_id=self.screen_id)
             
             # Store content for re-transmission when rotation changes
             self.last_content = text_message
@@ -214,7 +214,7 @@ class Screen:
             
             # Use Image class to load and validate image
             image = MediaImage(file_path=request.file_path)
-            messages = image.to_msg(rotation=self.current_rotation, chunk_size=SPI_CHUNK_SIZE)
+            messages = image.to_msg(rotation=self.current_rotation, chunk_size=SPI_CHUNK_SIZE, screen_id=self.screen_id)
             
             # Store content for re-transmission when rotation changes
             self.last_content = messages
@@ -243,7 +243,7 @@ class Screen:
                 return False
             
             # Generate protocol messages for all frames using to_msg()
-            frame_message_lists = gif.to_msg(rotation=self.current_rotation, chunk_size=SPI_CHUNK_SIZE)
+            frame_message_lists = gif.to_msg(rotation=self.current_rotation, chunk_size=SPI_CHUNK_SIZE, screen_id=self.screen_id)
             
             # Store content for re-transmission when rotation changes and setup GIF playback
             self.last_content = frame_message_lists

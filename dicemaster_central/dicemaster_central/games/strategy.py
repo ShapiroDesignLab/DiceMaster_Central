@@ -110,19 +110,20 @@ class BaseStrategy(LifecycleNode, ABC):
     
     @staticmethod
     def verify_and_load(strategy_dir: str, strategy_name: str, logger=None) -> Optional[Type['BaseStrategy']]:
-        """Verify and load a strategy from {strategy_name}/__init__.py."""
-        init_file = os.path.join(strategy_dir, '__init__.py')
+        """Verify and load a strategy from {strategy_name}/{strategy_name}.py."""
+        strategy_file = os.path.join(strategy_dir, f'{strategy_name}.py')
         
-        if not os.path.isfile(init_file):
+        if not os.path.isfile(strategy_file):
             if logger:
-                logger.warn(f"No __init__.py found in strategy directory: {strategy_dir}")
+                logger.warn(f"No {strategy_name}.py found in strategy directory: {strategy_dir}")
             return None
         
         try:
-            spec = importlib.util.spec_from_file_location(strategy_name, init_file)
+            # Create module spec and load the strategy implementation directly
+            spec = importlib.util.spec_from_file_location(f"strategy_{strategy_name}", strategy_file)
             if spec is None or spec.loader is None:
                 if logger:
-                    logger.warn(f"Could not create module spec for {init_file}")
+                    logger.warn(f"Could not create module spec for {strategy_file}")
                 return None
                 
             module = importlib.util.module_from_spec(spec)
@@ -137,10 +138,10 @@ class BaseStrategy(LifecycleNode, ABC):
                     return attr
             
             if logger:
-                logger.warn(f"No BaseStrategy subclass found in {init_file}")
+                logger.warn(f"No BaseStrategy subclass found in {strategy_file}")
             return None
             
         except Exception as e:
             if logger:
-                logger.error(f"Failed to load strategy from {init_file}: {e}")
+                logger.error(f"Failed to load strategy from {strategy_file}: {e}")
             return None

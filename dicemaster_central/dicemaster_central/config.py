@@ -13,15 +13,6 @@ from dataclasses import dataclass
 from dicemaster_central.constants import Rotation
 
 @dataclass
-class ScreenConfig:
-    """Configuration for a single screen"""
-    id: int
-    bus_id: int
-    bus_dev_id: int
-    default_orientation: int
-    description: str
-
-@dataclass
 class GlobalScreenConfig:
     """Global screen settings"""
     auto_rotate: bool = True
@@ -37,6 +28,19 @@ class SPIConfig:
     num_devices_per_bus: int = 2
 
 @dataclass
+class SPIBusConfig:
+    bus_id: int
+    use_dev: int = 0
+
+@dataclass
+class ScreenConfig:
+    """Configuration for a single screen"""
+    id: int
+    bus_id: int
+    default_orientation: int
+    description: str
+
+@dataclass
 class IMUConfig:
     """IMU configuration settings"""
     i2c_bus = 6
@@ -44,26 +48,36 @@ class IMUConfig:
     calibration_duration: float = 5.0
     polling_rate: int = 50
 
+EXAMPLE_DIR = os.path.expanduser("~/DiceMaster/DiceMaster_Central/dicemaster_central/examples")
+
 class GameConfig:
-    default_game_locations=[os.path.expanduser("~/.dicemaster/games")]
+    default_game_locations=[
+        os.path.expanduser("~/.dicemaster/games"),
+        os.path.join(EXAMPLE_DIR, "games")
+    ]
     default_strategy_locations=[
         os.path.expanduser("~/.dicemaster/strategies"),
-        os.path.join(os.path.dirname(__file__), "strategies")
+        os.path.join(EXAMPLE_DIR, "strategies")
     ]
-    default_game="shake_story"
+    default_game="chinese_quizlet"
     
 class DiceConfig:
-    screen_configs: Dict[int, ScreenConfig] = {
-        1: ScreenConfig(id=1, bus_id=0, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 1"),
-        2: ScreenConfig(id=2, bus_id=0, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 2"),
-        3: ScreenConfig(id=3, bus_id=1, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 3"),
-        4: ScreenConfig(id=4, bus_id=1, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 4"),
-        5: ScreenConfig(id=5, bus_id=3, bus_dev_id=0, default_orientation=Rotation(0), description="Screen 5"),
-        6: ScreenConfig(id=6, bus_id=3, bus_dev_id=1, default_orientation=Rotation(0), description="Screen 6"),
+    spi_config = SPIConfig()
+    bus_configs: Dict[int, SPIBusConfig] = {
+        0: SPIBusConfig(bus_id=0),
+        1: SPIBusConfig(bus_id=1),
+        3: SPIBusConfig(bus_id=3)
     }
-    active_spi_controllers = set([s.bus_id for s in screen_configs.values()])
+    screen_configs: Dict[int, ScreenConfig] = {
+        1: ScreenConfig(id=1, bus_id=0, default_orientation=Rotation(0), description="Screen 1"),
+        2: ScreenConfig(id=2, bus_id=0, default_orientation=Rotation(0), description="Screen 2"),
+        3: ScreenConfig(id=3, bus_id=1, default_orientation=Rotation(0), description="Screen 3"),
+        4: ScreenConfig(id=4, bus_id=1, default_orientation=Rotation(0), description="Screen 4"),
+        5: ScreenConfig(id=5, bus_id=3, default_orientation=Rotation(0), description="Screen 5"),
+        6: ScreenConfig(id=6, bus_id=3, default_orientation=Rotation(0), description="Screen 6"),
+    }
+    active_spi_controllers = set(bus_configs.keys())
     global_screen_config: GlobalScreenConfig = GlobalScreenConfig()
-    spi_config: SPIConfig = SPIConfig()
     imu_config: IMUConfig = IMUConfig()
     game_config = GameConfig()
 

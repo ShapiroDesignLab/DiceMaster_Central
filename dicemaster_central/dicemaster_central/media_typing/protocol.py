@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 # Private constants for this module
 _SOF = 0x7E  # Start of Frame
 _SOF_RESPONSE = 0x7F  # Start of Frame for responses
-_HEADER_SIZE = 5  # Header is 5 bytes (SOF + Type + ID + Length)
+_HEADER_SIZE = 5  # Header is 5 bytes (SOF + Type + Screen ID + Length)
 _DMA_PADDING = 4  # DMA buffer padding bytes
 _DMA_ALIGNMENT = 4  # DMA buffer alignment requirement (multiples of 4)
 
@@ -127,22 +127,29 @@ def pad_to_alignment(data: bytearray, alignment: int = _DMA_ALIGNMENT) -> bytear
     return data
 
 
-def create_ack_response(msg_id: int) -> 'ScreenResponse':
+def create_ack_response(screen_id: int) -> 'ScreenResponse':
     """Create an acknowledgment response using ScreenResponse format"""
-    return ScreenResponse(status_code=ErrorCode.SUCCESS, msg_id=msg_id)
+    return ScreenResponse(screen_id=screen_id, status_code=ErrorCode.SUCCESS)
 
 
-def create_error_response(msg_id: int, error_code: ErrorCode) -> 'ScreenResponse':
+def create_error_response(screen_id: int, error_code: ErrorCode) -> 'ScreenResponse':
     """Create an error response using ScreenResponse format"""
-    return ScreenResponse(status_code=error_code, msg_id=msg_id)
+    return ScreenResponse(screen_id=screen_id, status_code=error_code)
+
+
+def screen_id_to_bitmask(screen_id: int) -> int:
+    """Convert screen ID to bit mask (screen_id=2 -> 0x04)"""
+    if not 0 <= screen_id <= 7:
+        raise ValueError(f"Screen ID must be between 0 and 7, got {screen_id}")
+    return 1 << screen_id
 
 
 class ProtocolMessage(ABC):
     """Base class for all protocol messages"""
     
-    def __init__(self, msg_type: MessageType, msg_id: int = 0):
+    def __init__(self, screen_id: int, msg_type: MessageType):
         self.msg_type = msg_type
-        self.msg_id = msg_id
+        self.screen_id = screen_id
         self.payload = bytearray()
     
     def _encode_header(self, payload) -> None:
@@ -150,7 +157,7 @@ class ProtocolMessage(ABC):
         message = bytearray()
         message.append(_SOF)  # BYTE 0: Start of Frame
         message.append(self.msg_type)  # BYTE 1: Message Type
-        message.append(self.msg_id)  # BYTE 2: Message ID
+        message.append(screen_id_to_bitmask(self.screen_id))  # BYTE 2: Screen ID (bit-masked)
         
         # BYTE 3-4: Payload length (BIG_ENDIAN)
         payload_len = len(payload)
@@ -179,16 +186,16 @@ class ProtocolMessage(ABC):
 
     @classmethod
     def decode_header(cls, data: bytearray) -> Tuple[int, int, int, int]:
-        """Decode message header and return (msg_type, msg_id, payload_len, payload_start)"""
+        """Decode message header and return (msg_type, screen_id_bitmask, payload_len, payload_start)"""
         if len(data) < _HEADER_SIZE:
             raise ValueError("Insufficient data for header")
         if data[0] != _SOF:
             raise ValueError(f"Invalid SOF: expected {_SOF:02x}, got {data[0]:02x}")
         msg_type = data[1]
-        msg_id = data[2]
+        screen_id_bitmask = data[2]
         payload_len = (data[3] << 8) | data[4]
         
-        return msg_type, msg_id, payload_len, _HEADER_SIZE
+        return msg_type, screen_id_bitmask, payload_len, _HEADER_SIZE
     
     @classmethod
     @abstractmethod
@@ -203,17 +210,16 @@ class ProtocolMessage(ABC):
             raise ValueError("Insufficient payload for decoding")
         
         # Extract header information
-        _, msg_id, _, _ = cls.decode_header(payload)
-        # Extract content payload
-        content_payload = payload[_HEADER_SIZE:]
+        _, screen_id_bitmask, payload_len, _ = cls.decode_header(payload)
+        # Extract content payload using the actual length from header (excludes DMA padding)
+        content_payload = payload[_HEADER_SIZE:_HEADER_SIZE + payload_len]
         # Create instance using class method
         instance = cls._decode_payload(content_payload)
-        # Set the correct message ID from the header
-        instance.msg_id = msg_id
-        # Re-encode with the correct message ID
-        instance.encode()
+        # Set the screen ID from the bit-mask (for now, just use the first set bit)
+        if screen_id_bitmask > 0:
+            instance.screen_id = (screen_id_bitmask & -screen_id_bitmask).bit_length() - 1
         return instance
-
+    
     def __eq__(self, other):
         """Check equality based on message type and ID"""
         if not isinstance(other, ProtocolMessage):
@@ -224,10 +230,13 @@ class ProtocolMessage(ABC):
 class TextBatchMessage(ProtocolMessage):
     """Text batch message with rotation support and per-line font colors"""
     
-    def __init__(self, bg_color: int = 0, 
-                 texts = None,  # Can be TextEntry objects or tuples
-                 rotation: Rotation = Rotation.ROTATION_0, msg_id: int = 0):
-        super().__init__(MessageType.TEXT_BATCH, msg_id)
+    def __init__(self, 
+        screen_id,
+        bg_color: int = 0, 
+        texts = None,  # Can be TextEntry objects or tuples
+        rotation: Rotation = Rotation.ROTATION_0
+    ):
+        super().__init__(screen_id, MessageType.TEXT_BATCH)
         self.bg_color = bg_color
         self.rotation = rotation
         
@@ -319,7 +328,7 @@ class TextBatchMessage(ProtocolMessage):
             
             texts.append((x_cursor, y_cursor, font_id, font_color, text_string))
         
-        return cls(bg_color=bg_color, texts=texts, rotation=rotation)
+        return cls(screen_id=0, bg_color=bg_color, texts=texts, rotation=rotation)
 
     def __eq__(self, other) -> bool:
         """Check equality based on content"""
@@ -335,10 +344,10 @@ class TextBatchMessage(ProtocolMessage):
 class ImageStartMessage(ProtocolMessage):
     """Image transfer start message with rotation support and embedded chunk 0"""
     
-    def __init__(self, image_id: int, image_format: ImageFormat, resolution: ImageResolution, 
+    def __init__(self, screen_id: int, image_id: int, image_format: ImageFormat, resolution: ImageResolution, 
                  delay_time: int, total_size: int, num_chunks: int, chunk_0_data: bytes = b'',
-                 rotation: Rotation = Rotation.ROTATION_0, msg_id: int = 0):
-        super().__init__(MessageType.IMAGE_TRANSFER_START, msg_id)
+                 rotation: Rotation = Rotation.ROTATION_0):
+        super().__init__(screen_id, MessageType.IMAGE_TRANSFER_START)
         self.image_id = image_id
         self.image_format = image_format
         self.resolution = resolution
@@ -400,6 +409,7 @@ class ImageStartMessage(ProtocolMessage):
         chunk_0_data = bytes(payload[9:]) if len(payload) > 9 else b''
         
         return cls(
+            screen_id=0,
             image_id=image_id,
             image_format=image_format,
             resolution=resolution,
@@ -430,9 +440,9 @@ class ImageStartMessage(ProtocolMessage):
 class ImageChunkMessage(ProtocolMessage):
     """Image chunk message with DMA-aware chunk sizing"""
     
-    def __init__(self, image_id: int, chunk_id: int, start_location: int, 
-                 chunk_data: bytes, msg_id: int = 0):
-        super().__init__(MessageType.IMAGE_CHUNK, msg_id)
+    def __init__(self, screen_id: int, image_id: int, chunk_id: int, start_location: int, 
+                 chunk_data: bytes):
+        super().__init__(screen_id, MessageType.IMAGE_CHUNK)
         self.image_id = image_id
         self.chunk_id = chunk_id
         self.start_location = start_location
@@ -486,6 +496,7 @@ class ImageChunkMessage(ProtocolMessage):
         chunk_data = bytes(payload[7:7+chunk_len])
         
         return cls(
+            screen_id=0,
             image_id=image_id,
             chunk_id=chunk_id,
             start_location=start_location,
@@ -508,8 +519,8 @@ class ImageChunkMessage(ProtocolMessage):
 class ImageEndMessage(ProtocolMessage):
     """Image transfer end message"""
     
-    def __init__(self, image_id: int, msg_id: int = 0):
-        super().__init__(MessageType.IMAGE_TRANSFER_END, msg_id)
+    def __init__(self, screen_id: int, image_id: int):
+        super().__init__(screen_id, MessageType.IMAGE_TRANSFER_END)
         self.image_id = image_id
         self.encode()
     
@@ -527,7 +538,7 @@ class ImageEndMessage(ProtocolMessage):
         
         image_id = payload[0]
         
-        return cls(image_id=image_id)
+        return cls(screen_id=0, image_id=image_id)
 
     def __eq__(self, other) -> bool:
         """Check equality based on content"""
@@ -542,8 +553,8 @@ class ImageEndMessage(ProtocolMessage):
 class BacklightOnMessage(ProtocolMessage):
     """Backlight on message"""
     
-    def __init__(self, msg_id: int = 0):
-        super().__init__(MessageType.BACKLIGHT_ON, msg_id)
+    def __init__(self, screen_id: int):
+        super().__init__(screen_id, MessageType.BACKLIGHT_ON)
         self.encode()
     
     def _encode_payload(self):
@@ -556,7 +567,7 @@ class BacklightOnMessage(ProtocolMessage):
         if len(payload) != 0:
             raise ValueError("Backlight on message should have no payload")
         
-        return cls()
+        return cls(screen_id=0)
 
     def __eq__(self, other) -> bool:
         """Check equality based on content"""
@@ -568,8 +579,8 @@ class BacklightOnMessage(ProtocolMessage):
 class BacklightOffMessage(ProtocolMessage):
     """Backlight off message"""
     
-    def __init__(self, msg_id: int = 0):
-        super().__init__(MessageType.BACKLIGHT_OFF, msg_id)
+    def __init__(self, screen_id: int):
+        super().__init__(screen_id, MessageType.BACKLIGHT_OFF)
         self.encode()
     
     def _encode_payload(self):
@@ -582,7 +593,7 @@ class BacklightOffMessage(ProtocolMessage):
         if len(payload) != 0:
             raise ValueError("Backlight off message should have no payload")
         
-        return cls()
+        return cls(screen_id=0)
 
     def __eq__(self, other) -> bool:
         """Check equality based on content"""
@@ -591,108 +602,10 @@ class BacklightOffMessage(ProtocolMessage):
         return super().__eq__(other)
 
 
-class PingRequestMessage(ProtocolMessage):
-    """Ping request message"""
-    
-    def __init__(self, msg_id: int = 0):
-        super().__init__(MessageType.PING_REQUEST, msg_id)
-        self.encode()
-    
-    def _encode_payload(self):
-        """Encode ping request payload (no payload)"""
-        return bytearray()  # Empty payload
-    
-    @classmethod
-    def _decode_payload(cls, payload: bytearray) -> "PingRequestMessage":
-        """Decode ping request payload (no payload expected)"""
-        if len(payload) != 0:
-            raise ValueError("Ping request message should have no payload")
-        
-        return cls()
-
-    def __eq__(self, other) -> bool:
-        """Check equality based on content"""
-        if not isinstance(other, PingRequestMessage):
-            return False
-        return super().__eq__(other)
-
-
-class ScreenResponse(ProtocolMessage):
-    """Screen response message - unified response format for all responses"""
-    
-    def __init__(self, status_code: ErrorCode = ErrorCode.SUCCESS, msg_id: int = 0):
-        # ScreenResponse doesn't use the standard message type system
-        # It has its own format starting with SOF_RESPONSE
-        super().__init__(MessageType.PING_RESPONSE, msg_id)  # Keep for compatibility but not used in encoding
-        self.status_code = status_code
-        self.encode()
-    
-    def _encode_payload(self):
-        """Encode the screen response payload"""
-        payload = bytearray()
-        
-        payload.append(_SOF_RESPONSE)  # BYTE 0: SOF marker for response (0x7F)
-        payload.append(self.msg_id)    # BYTE 1: message ID
-        
-        # BYTE 2-5: status code (4 bytes, big endian)
-        status_value = int(self.status_code)
-        payload.extend(struct.pack('>I', status_value))
-        
-        # BYTE 6-7: padding (0)
-        payload.extend(b'\x00\x00')
-        
-        return payload
-    
-    def _encode_header(self, payload) -> None:
-        """Override header encoding for screen response - payload IS the complete message"""
-        # For screen response, the payload already contains the complete message format
-        # No additional header wrapping needed
-        self.payload = payload
-    
-    @classmethod
-    def _decode_payload(cls, payload: bytearray) -> "ScreenResponse":
-        """Decode screen response payload"""
-        if len(payload) < 8:
-            raise ValueError("Insufficient payload for screen response (expected 8 bytes)")
-        
-        # BYTE 0: Validate SOF marker for response
-        if payload[0] != _SOF_RESPONSE:
-            raise ValueError(f"Invalid response SOF marker: expected {_SOF_RESPONSE:02x}, got {payload[0]:02x}")
-        
-        # BYTE 1: message ID
-        msg_id = payload[1]
-        
-        # BYTE 2-5: status code (4 bytes, big endian)
-        status_value = struct.unpack('>I', payload[2:6])[0]
-        
-        try:
-            status_code = ErrorCode(status_value)
-        except ValueError:
-            raise ValueError(f"Invalid status code: {status_value}")
-        
-        # BYTE 6-7: padding (ignored)
-        
-        instance = cls(status_code=status_code, msg_id=msg_id)
-        return instance
-    
-    @classmethod
-    def decode(cls, payload: bytearray) -> 'ScreenResponse':
-        """Override decode for screen response - payload is the complete message"""
-        return cls._decode_payload(payload)
-
-    def __eq__(self, other) -> bool:
-        """Check equality based on content"""
-        if not isinstance(other, ScreenResponse):
-            return False
-        return (
-            self.msg_id == other.msg_id and 
-            self.status_code == other.status_code
-        )
-
 # Note: AckMessage and ErrorMessage have been unified into ScreenResponse
 # All responses from the screen now use the ScreenResponse format:
 # - BYTE 0: SOF marker for response (0x7F) 
-# - BYTE 1: message ID
+# - BYTE 1: screen ID
 # - BYTE 2-5: status code (ErrorCode enum value, 4 bytes big endian)
 # - BYTE 6-7: padding (0)
 #
@@ -708,9 +621,6 @@ MESSAGE_CLASSES = {
     MessageType.IMAGE_TRANSFER_END: ImageEndMessage,
     MessageType.BACKLIGHT_ON: BacklightOnMessage,
     MessageType.BACKLIGHT_OFF: BacklightOffMessage,
-    MessageType.PING_REQUEST: PingRequestMessage,
-    # Note: PING_RESPONSE, ACKNOWLEDGMENT, and ERROR_MESSAGE all use ScreenResponse format
-    # They don't have individual message classes since they all follow the same response format
 }
 
 # Export utility functions
@@ -722,8 +632,6 @@ __all__ = [
     'ImageEndMessage',
     'BacklightOnMessage',
     'BacklightOffMessage', 
-    'PingRequestMessage',
-    'ScreenResponse',
     'MESSAGE_CLASSES',
     'encode_text_entry',
     'calculate_effective_chunk_size',

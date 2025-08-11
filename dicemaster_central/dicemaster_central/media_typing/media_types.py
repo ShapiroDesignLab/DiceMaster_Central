@@ -181,12 +181,14 @@ class TextGroup(Media):
     def to_msg(self, **kwargs) -> TextBatchMessage:
         """Create protocol message with rotation support"""
         rotation = kwargs.get('rotation', Rotation.ROTATION_0)
+        screen_id = kwargs.get('screen_id', 0)
         
         # Pass TextEntry objects directly for optimized encoding
         return TextBatchMessage(
             bg_color=self.bg_color,
             texts=self.texts,  # Pass TextEntry objects directly
-            rotation=rotation
+            rotation=rotation,
+            screen_id=screen_id
         )
 
 class OptionGroup(TextGroup):
@@ -305,6 +307,7 @@ class Image(Media):
         from .protocol import calculate_effective_chunk_size, calculate_effective_chunk_size_for_image_start
         
         rotation = kwargs.get('rotation', Rotation.ROTATION_0)
+        screen_id = kwargs.get('screen_id', 0)
         spi_chunk_size = kwargs.get('chunk_size', SPI_CHUNK_SIZE)
         
         # Calculate effective chunk sizes considering DMA restrictions
@@ -327,6 +330,7 @@ class Image(Media):
         
         # Create start message with embedded chunk 0
         start_message = ImageStartMessage(
+            screen_id=screen_id,
             image_id=self.image_id,
             image_format=self.image_format,
             resolution=self.resolution,
@@ -346,6 +350,7 @@ class Image(Media):
             chunk_data = self.content[i:i + regular_chunk_size]
             
             chunk_message = ImageChunkMessage(
+                screen_id=screen_id,
                 image_id=self.image_id,
                 chunk_id=chunk_id,
                 start_location=start_location,
@@ -492,6 +497,7 @@ class GIF(Media):
     def to_msg(self, **kwargs) -> List[List[Union[ImageStartMessage, ImageChunkMessage]]]:
         """Return a list of Image.to_msg() lists for each frame with DMA-aware chunking and embedded chunk 0"""
         rotation = kwargs.get('rotation', Rotation.ROTATION_0)
+        screen_id = kwargs.get('screen_id', 0)
         spi_chunk_size = kwargs.get('chunk_size', 8192)  # Updated to 8KB
         
         if not self.frames_data:
@@ -520,7 +526,7 @@ class GIF(Media):
             )
             
             # Get the protocol messages for this frame - effective chunk size is calculated inside to_msg
-            messages = frame_image.to_msg(rotation=rotation, chunk_size=spi_chunk_size)
+            messages = frame_image.to_msg(rotation=rotation, chunk_size=spi_chunk_size, screen_id=screen_id)
             frame_messages.append(messages)
         
         return frame_messages

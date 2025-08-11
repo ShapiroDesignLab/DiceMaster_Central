@@ -21,22 +21,8 @@ from dicemaster_central.games.strategy import BaseStrategy
 from dicemaster_central.games.game import DiceGame
 
 # Import service definitions when available
-try:
-    from dicemaster_central_msgs.srv import GameControl
-except ImportError:
-    # Define a placeholder if the service is not available
-    class GameControl:
-        class Request:
-            def __init__(self):
-                self.command = ""
-                self.game_name = ""
-        
-        class Response:
-            def __init__(self):
-                self.success = False
-                self.message = ""
-                self.current_game = ""
-                self.available_games = []
+from dicemaster_central_msgs.srv import DiceGameControl
+
 
 class GameManager(Node):
     """
@@ -64,7 +50,7 @@ class GameManager(Node):
         # ROS2 services
         self.callback_group = ReentrantCallbackGroup()
         self.game_control_service = self.create_service(
-            GameControl,
+            DiceGameControl,
             'game_control',
             self.handle_game_control,
             callback_group=self.callback_group
@@ -76,10 +62,14 @@ class GameManager(Node):
         self._discover_games() 
         
         # Auto-launch default game if specified (deferred to avoid deadlock)
-        if self.game_config.default_game and self.game_config.default_game in self.games:
-            self.get_logger().info(f"Auto-launching default game: {self.game_config.default_game}")
-            self._default_game_timer = self.create_timer(0.1, self._deferred_start_default_game)
-        
+        if self.game_config.default_game:
+            if self.game_config.default_game in self.games:
+                self.get_logger().info(f"Auto-launching default game: {self.game_config.default_game}")
+                self._default_game_timer = self.create_timer(0.1, self._deferred_start_default_game)
+            else:
+                self.get_logger().info(f"{self.game_config.default_game} not in detected games")
+        else:
+            self.get_logger().info("No default game detected")
         self.get_logger().info("Game manager initialized successfully")
     
     def _deferred_start_default_game(self):
@@ -151,7 +141,7 @@ class GameManager(Node):
         
         self.get_logger().info(f"Discovered {len(self.games)} games: {list(self.games.keys())}")
     
-    def handle_game_control(self, request: GameControl.Request, response: GameControl.Response):
+    def handle_game_control(self, request: DiceGameControl.Request, response: DiceGameControl.Response):
         """Handle game control service requests."""
         self.get_logger().info(f"Game control request: {request.command}")
         

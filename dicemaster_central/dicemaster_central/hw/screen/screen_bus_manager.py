@@ -53,12 +53,22 @@ class ScreenBusManager(Node):
         self.bus_id = bus_id
 
         # Get configuration from hardcoded config
+        self.bus_config = dice_config.bus_configs[bus_id]
         self.spi_config = dice_config.spi_config
         self.global_settings = dice_config.global_screen_config
         
         # Filter screen configs for this bus
-        bus_screen_configs = [cfg for cfg in dice_config.screen_configs.values() if cfg.bus_id == bus_id]
-        self.screen_configs: Dict[int, ScreenConfig] = {cfg.id: cfg for cfg in bus_screen_configs}
+        self.screen_configs: Dict[int, ScreenConfig] = {
+            cfg.id: cfg for cfg in dice_config.screen_configs.values() if cfg.bus_id == bus_id
+        }
+
+        # SPI devices for each screen on this bus
+        self.spi_device = SPIDevice(
+            bus_id=self.bus_id,
+            bus_dev_id=self.bus_config.use_dev,
+            spi_config=self.spi_config,
+            verbose=False
+        )
 
         self.screens: Dict[int, Screen] = {
             screen_config.id: Screen(
@@ -68,17 +78,6 @@ class ScreenBusManager(Node):
             ) for screen_config in self.screen_configs.values()
         }  # screen_id -> Screen instance
         
-        # SPI devices for each screen on this bus
-        self.spi_devices: Dict[int, SPIDevice] = {
-            screen_id: SPIDevice(
-                bus_id=screen_config.bus_id,
-                bus_dev_id=screen_config.bus_dev_id,
-                spi_config=self.spi_config,
-                verbose=False
-            )
-            for screen_id, screen_config in self.screen_configs.items()
-        }
-
         self.screen_cmd_subs = {
             screen_id: self.create_subscription(
                 ScreenMediaCmd,
@@ -89,11 +88,9 @@ class ScreenBusManager(Node):
             for screen_id in self.screen_configs.keys()
         }
 
-        # Message queue and transmission
+        # Message queue
         self.message_queue = PriorityQueue()
-        self.transmission_lock = threading.Lock()  # Only one device can use SPI at a time\
-        self.last_screen_id = -1
-        
+
         # Threading
         self.running = False
         self.transmission_thread = None
@@ -126,10 +123,14 @@ class ScreenBusManager(Node):
             self.transmission_thread.join(timeout=2.0)
         
         # Close SPI devices
-        for spi_device in self.spi_devices.values():
-            spi_device.down()
-        
-        # Stop
+        del self.spi_device
+        while not self.message_queue.empty():
+            try:
+                self.message_queue.get_nowait()
+            except Empty:
+                break # Queue is now empty
+                    
+        # Mark as stopped
         self.running = False
         self.get_logger().info(f"Stopped bus manager for bus {self.bus_id}")
     
@@ -147,16 +148,14 @@ class ScreenBusManager(Node):
         if screen_id not in self.screen_configs.keys():
             self.get_logger().warn(f"Invalid screen ID {screen_id} for bus {self.bus_id}")
             return False
-
-        # Create queued message
-        queued_msg = QueuedMessage(
-            screen_id=screen_id,
-            message=message,
-            priority=priority
-        )
-        
         # Add to queue
-        self.message_queue.put(queued_msg)
+        self.message_queue.put(
+            QueuedMessage(
+                screen_id=screen_id,
+                message=message,
+                priority=priority
+            )
+        )
         return True
     
     def _transmission_worker(self):
@@ -167,60 +166,22 @@ class ScreenBusManager(Node):
             try:
                 # Get next message with timeout
                 queued_msg = self.message_queue.get(timeout=1.0)
-                
-                # Start timing the transmission work
-                st = perf_counter()
-                
-                # Transmit the message
-                success = self._transmit_message(queued_msg)
-                
-                if success:
-                    self.stats['messages_sent'] += 1
-                    self.stats['bytes_transmitted'] += len(queued_msg.message.payload)
-                else:
-                    self.stats['messages_failed'] += 1
-                    self.get_logger().warn(f"Failed to transmit message to screen {queued_msg.screen_id}")
-                
-                self.stats['last_activity'] = time.time()
-                
-                # Small delay to prevent overwhelming the bus
-                time.sleep(0.001)
 
-                self.get_logger().info(f"Last run took {(perf_counter() - st):.4f}s")
-                
+                screen_id = queued_msg.screen_id
+                if screen_id not in self.screen_configs.keys():
+                    self.get_logger().warn(f"Invalid screen ID {screen_id} for bus {self.bus_id}")
+                    self.stats['messages_failed'] += 1
+
+                # Send and log
+                self.spi_device.send(queued_msg.message.payload)
+                self.stats['messages_sent'] += 1
+                self.stats['bytes_transmitted'] += len(queued_msg.message.payload)
+            
             except Empty:
                 # No messages to process
                 continue
             except Exception as e:
                 self.get_logger().error(f"Error in transmission worker: {e}")
-
-    def _transmit_message(self, queued_msg: QueuedMessage) -> bool:
-        """Transmit a single message to a screen"""
-        screen_id = queued_msg.screen_id
-        if screen_id not in self.screen_configs.keys():
-            self.get_logger().warn(f"Invalid screen ID {screen_id} for bus {self.bus_id}")
-            return False
-
-        spi_device = self.spi_devices[screen_id]
-
-        try:
-            # Ensure device is ready
-            if self.last_screen_id != screen_id:
-                # Clean old device
-                old_spi_dev = self.spi_devices.get(self.last_screen_id)
-                if old_spi_dev:
-                    old_spi_dev.down()
-
-            # Start new device and send
-            spi_device.up()
-            spi_device.send(list(queued_msg.message.payload))
-            self.last_screen_id = screen_id
-            return True
-                
-        except Exception as e:
-            self.get_logger().error(f"SPI transmission error for screen {screen_id}: {e}")
-            spi_device.down()  # Ensure device is closed
-            return False
 
     def get_stats(self) -> Dict[str, Any]:
         """Get bus manager statistics"""
