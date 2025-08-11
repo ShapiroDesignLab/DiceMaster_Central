@@ -78,7 +78,8 @@ class SPIDevice:
         for msg in msgs:
             if perf_counter() - st < self.EXPECTING_WAIT_TIME:
                 sleep(self.EXPECTING_WAIT_TIME - (perf_counter() - st))
-            msg = self.spi.xfer2(msg)
+            print("Sent", len(msg), "bytes")
+            self.spi.writebytes2(msg)
             st = perf_counter()
 
         self.last_sent_time = perf_counter()
