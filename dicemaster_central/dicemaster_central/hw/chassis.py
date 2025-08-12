@@ -22,6 +22,9 @@ import time
 from dicemaster_central.constants import Rotation as ConfigRotation
 from dicemaster_central.config import dice_config
 
+# from constants_copy import Rotation as ConfigRotation
+# from config_copy import dice_config
+
 # Conditional imports for ROS message types only
 ChassisOrientation = None
 ScreenPose = None
@@ -125,15 +128,15 @@ class ChassisNode(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         
-        # Current robot pose - initialize with default (identity) pose
+        # Current robot pose - initialize with default pose rotated π around roll axis
         self.current_pose = Pose()
         self.current_pose.position.x = 0.0
         self.current_pose.position.y = 0.0
         self.current_pose.position.z = 0.0
-        self.current_pose.orientation.x = 0.0
+        self.current_pose.orientation.x = 1.0  # π rotation around X-axis (roll)
         self.current_pose.orientation.y = 0.0
         self.current_pose.orientation.z = 0.0
-        self.current_pose.orientation.w = 1.0  # Identity quaternion
+        self.current_pose.orientation.w = 0.0  # π rotation quaternion
         self.pose_lock = threading.Lock()
         self.last_pose_time = None
         self.imu_connected = False
@@ -188,26 +191,10 @@ class ChassisNode(Node):
         
     def _publish_static_transforms(self):
         """Publish static transforms for the robot"""
-        # IMU is assumed to be at the center of the base_link
-        # This transform defines the relationship between base_link and imu_link
-        static_transform = TransformStamped()
-        static_transform.header.stamp = self.get_clock().now().to_msg()
-        static_transform.header.frame_id = self.base_frame
-        static_transform.child_frame_id = self.imu_frame
-        
-        # IMU is at the center of the dice (no translation)
-        static_transform.transform.translation.x = 0.0
-        static_transform.transform.translation.y = 0.0
-        static_transform.transform.translation.z = 0.0
-        
-        # IMU frame aligned with base_link (no rotation)
-        static_transform.transform.rotation.x = 0.0
-        static_transform.transform.rotation.y = 0.0
-        static_transform.transform.rotation.z = 0.0
-        static_transform.transform.rotation.w = 1.0
-        
-        self.static_tf_broadcaster.sendTransform(static_transform)
-        self.get_logger().info(f'Published static transform: {self.base_frame} -> {self.imu_frame}')
+        # Note: Static transforms are now handled by robot_state_publisher from URDF
+        # The URDF defines imu_link as root with base_link as child
+        # We don't need to publish additional static transforms here since the URDF handles it
+        self.get_logger().info('Static transforms handled by robot_state_publisher from URDF')
     
     def imu_callback(self, msg):
         """Callback for IMU data - converts sensor_msgs/Imu to internal Pose"""
@@ -242,11 +229,11 @@ class ChassisNode(Node):
             current_pose = self.current_pose
             pose_time = self.last_pose_time
         
-        # Always publish the world to base_link transform to ensure world frame exists
+        # Publish the world to imu_link transform (imu_link is now the root frame)
         transform = TransformStamped()
         transform.header.stamp = self.get_clock().now().to_msg()
         transform.header.frame_id = self.world_frame
-        transform.child_frame_id = self.base_frame
+        transform.child_frame_id = self.imu_frame  # Changed from base_frame to imu_frame
         
         # Position (dice position is always at origin)
         transform.transform.translation.x = current_pose.position.x
@@ -545,7 +532,9 @@ class ChassisNode(Node):
             self.get_logger().info(info_msg)
 
             for screen in screen_orientations:
-                print(f"Screen {screen['screen_id']} ({self._get_screen_color_name(screen['screen_id'])}): {self.SCREEN_ROTATIONS[screen['rotation']]}")
+                screen_id = screen['screen_id']
+                rotation = self.screen_rotations[screen_id]
+                print(f"Screen {screen_id} ({self._get_screen_color_name(screen_id)}): {self.SCREEN_ROTATIONS[rotation]}")
 
     def destroy_node(self):
         """Clean shutdown"""
