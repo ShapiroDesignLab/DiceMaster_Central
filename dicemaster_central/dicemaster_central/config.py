@@ -59,7 +59,7 @@ class GameConfig:
         os.path.expanduser("~/.dicemaster/strategies"),
         os.path.join(EXAMPLE_DIR, "strategies")
     ]
-    default_game="chinese_quizlet"
+    default_game="pipeline_test"
     
 class DiceConfig:
     spi_config = SPIConfig()

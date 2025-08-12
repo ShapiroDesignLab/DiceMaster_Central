@@ -13,8 +13,8 @@ from dicemaster_central.media_typing import TextGroup, Image, GIF
 import os
 current_path = os.path.dirname(os.path.abspath(__file__))
 
-SCREEN_ID = 1
-SPID = 0
+SCREEN_ID = 4
+SPID = 3
 
 # Setup SPI device
 spi_config = SPIConfig(

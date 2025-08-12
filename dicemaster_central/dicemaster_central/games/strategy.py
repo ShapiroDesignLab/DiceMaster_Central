@@ -67,6 +67,19 @@ class BaseStrategy(LifecycleNode, ABC):
         pass
 
     # --- Lifecycle callbacks ---
+    def on_configure(self, state: State) -> TransitionCallbackReturn:
+        """
+        Called when a transition from UNCONFIGURED to INACTIVE is requested.
+        Return SUCCESS to complete the transition, FAILURE to abort.
+        """
+        try:
+            # Configuration is already done in __init__, just acknowledge success
+            self.get_logger().info(f"{self._strategy_name}: configured.")
+            return TransitionCallbackReturn.SUCCESS
+        except Exception as e:
+            self.get_logger().error(f"{self._strategy_name}: configuration failed: {e}")
+            return TransitionCallbackReturn.FAILURE
+
     def on_activate(self, state: State) -> TransitionCallbackReturn:
         """
         Called when a transition to ACTIVE is requested.
@@ -90,6 +103,31 @@ class BaseStrategy(LifecycleNode, ABC):
             return TransitionCallbackReturn.SUCCESS
         except Exception as e:
             self.get_logger().error(f"{self._strategy_name}: deactivation failed: {e}")
+            return TransitionCallbackReturn.FAILURE
+
+    def on_cleanup(self, state: State) -> TransitionCallbackReturn:
+        """
+        Called when a transition from INACTIVE to UNCONFIGURED is requested.
+        """
+        try:
+            # Clean up any remaining resources
+            self.get_logger().info(f"{self._strategy_name}: cleaned up.")
+            return TransitionCallbackReturn.SUCCESS
+        except Exception as e:
+            self.get_logger().error(f"{self._strategy_name}: cleanup failed: {e}")
+            return TransitionCallbackReturn.FAILURE
+
+    def on_shutdown(self, state: State) -> TransitionCallbackReturn:
+        """
+        Called when shutdown is requested from any state.
+        """
+        try:
+            # Ensure strategy is stopped
+            self.stop_strategy()
+            self.get_logger().info(f"{self._strategy_name}: shutdown.")
+            return TransitionCallbackReturn.SUCCESS
+        except Exception as e:
+            self.get_logger().error(f"{self._strategy_name}: shutdown failed: {e}")
             return TransitionCallbackReturn.FAILURE
 
     # Optional: keep your explicit cleanup path if you use it elsewhere

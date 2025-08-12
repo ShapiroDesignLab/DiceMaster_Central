@@ -65,7 +65,7 @@ class GameManager(Node):
         if self.game_config.default_game:
             if self.game_config.default_game in self.games:
                 self.get_logger().info(f"Auto-launching default game: {self.game_config.default_game}")
-                self._default_game_timer = self.create_timer(0.1, self._deferred_start_default_game)
+                self._default_game_timer = self.create_timer(1, self._deferred_start_default_game)
             else:
                 self.get_logger().info(f"{self.game_config.default_game} not in detected games")
         else:
@@ -77,6 +77,7 @@ class GameManager(Node):
         if hasattr(self, '_default_game_timer'):
             self.destroy_timer(self._default_game_timer)
             delattr(self, '_default_game_timer')
+        self.get_logger().info(f"Launching game: {self.game_config.default_game}")
         self.start_game(self.game_config.default_game)
     
     def _transition(self, node_name: str, transition_id: int, wait_sec: float = 5.0) -> bool:
@@ -204,7 +205,7 @@ class GameManager(Node):
                 return False
         
         game = self.games[game_name]
-        
+        self.get_logger().info("Gotten game")
         try:
             # Create strategy instance
             strategy_class = self.strategies[game.strategy_name]
@@ -259,7 +260,7 @@ class GameManager(Node):
             # Try to gracefully transition down
             self._transition(name, Transition.TRANSITION_DEACTIVATE)
             self._transition(name, Transition.TRANSITION_CLEANUP)
-            self._transition(name, Transition.TRANSITION_SHUTDOWN)
+            self._transition(name, Transition.TRANSITION_DESTROY)
         except Exception as e:
             self.get_logger().warn(f"Graceful lifecycle shutdown failed for {name}: {e}")
             ok = False

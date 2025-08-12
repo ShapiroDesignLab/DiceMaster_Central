@@ -47,7 +47,6 @@ class TestStrategy(BaseStrategy):
         """Start the strategy: create timer."""
         # Create timer that fires every second
         self.notification_timer = self.create_timer(1.0, self.send_random_notification)
-        
         self.get_logger().info("TestStrategy started - sending notifications every second")
     
     def stop_strategy(self):
