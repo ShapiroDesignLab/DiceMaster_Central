@@ -73,6 +73,7 @@ class Screen:
         self.gif_frame_index = 0
         self.gif_active = False
         self.gif_lock = threading.Lock()
+        self.gif_rotation = self.current_rotation
         
         # Chassis pose subscription for rotation updates
         topic_name = f'/chassis/screen_{self.screen_id}_pose'
@@ -103,12 +104,11 @@ class Screen:
             return
 
         # Update bottom rotation and resend
-        old_rotation = self.current_rotation
         self.current_rotation = new_rotation
-        self.node.get_logger().info(
-            f'Screen {self.screen_id} rotation updated from {old_rotation} to {new_rotation} '
-            f'(up_alignment: {msg.up_alignment:.3f}, facing_up: {msg.is_facing_up})'
-        )
+        # self.node.get_logger().info(
+        #     f'Screen {self.screen_id} rotation updated from {old_rotation} to {new_rotation} '
+        #     f'(up_alignment: {msg.up_alignment:.3f}, facing_up: {msg.is_facing_up})'
+        # )
         
         # Re-send current content with new rotation
         if self.last_content is not None:
@@ -279,6 +279,7 @@ class Screen:
             self.gif_messages = frame_message_lists
             self.gif_frame_index = 0
             self.gif_active = True
+            self.gif_rotation = self.current_rotation
             
             # Create timer for GIF playback at 12Hz
             self.gif_timer = self.node.create_timer(GIF_FRAME_TIME, self._gif_frame_callback)
@@ -292,12 +293,6 @@ class Screen:
         # Start timing this callback execution
         callback_start = perf_counter()
         
-        # Log time since last callback (timer interval)
-        if not hasattr(self, "_gif_last_t"):
-            self._gif_last_t = callback_start
-        
-        self.node.get_logger().info(f"Timer interval: {callback_start - self._gif_last_t:.4f}s")
-        
         with self.gif_lock:
             if not self.gif_active or not self.gif_messages:
                 return
@@ -307,18 +302,16 @@ class Screen:
             
             # Update rotation for current frame if rotation is enabled
             # Only the first message (ImageStartMessage) has rotation
-            if current_frame_messages and hasattr(current_frame_messages[0], 'rotation'):
-                current_frame_messages[0].rotation = self.current_rotation
+            # if current_frame_messages and hasattr(current_frame_messages[0], 'rotation'):
+            #     current_frame_messages[0].rotation = self.current_rotation
+            current_frame_messages[0].rotation = self.gif_rotation
             
             # Push frame to bus manager
             self.push_to_bus_manager(current_frame_messages, MessagePriority.HIGH)
             
             # Advance to next frame
             self.gif_frame_index = (self.gif_frame_index + 1) % len(self.gif_messages)
-        
-        # Log callback execution time
-        callback_end = perf_counter()
-        self.node.get_logger().info(f"Callback execution: {callback_end - callback_start:.4f}s")
+
         self._gif_last_t = callback_start
 
     def destroy_gif_replay(self):
@@ -350,15 +343,15 @@ class Screen:
                     if hasattr(start_msg, 'rotation'):
                         start_msg.rotation = self.current_rotation
                     self.push_to_bus_manager(self.last_content, MessagePriority.HIGH)
-            elif self.last_content_type == ContentType.GIF:
-                # For GIF, update rotation in all frame start messages and restart playback
-                if isinstance(self.last_content, list):
-                    for frame_messages in self.last_content:
-                        if isinstance(frame_messages, list) and len(frame_messages) > 0:
-                            start_msg = frame_messages[0]  # First message should be ImageStartMessage
-                            if hasattr(start_msg, 'rotation'):
-                                start_msg.rotation = self.current_rotation
-                    # Restart GIF playback with updated messages
-                    self.setup_gif_replay(self.last_content)
+            # elif self.last_content_type == ContentType.GIF:
+            #     # For GIF, update rotation in all frame start messages and restart playback
+            #     if isinstance(self.last_content, list):
+            #         for frame_messages in self.last_content:
+            #             if isinstance(frame_messages, list) and len(frame_messages) > 0:
+            #                 start_msg = frame_messages[0]  # First message should be ImageStartMessage
+            #                 if hasattr(start_msg, 'rotation'):
+            #                     start_msg.rotation = self.current_rotation
+            #         # Restart GIF playback with updated messages
+            #         self.setup_gif_replay(self.last_content)
         except Exception as e:
             self.node.get_logger().error(f"Error re-sending content with rotation: {e}")

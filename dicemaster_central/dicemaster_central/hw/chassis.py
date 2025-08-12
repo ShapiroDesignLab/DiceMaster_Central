@@ -86,7 +86,7 @@ class ChassisNode(Node):
         self.declare_parameter('alternative_imu_topic', '/data/imu')
         self.declare_parameter('rotation_threshold', 0.7)  # Stickiness factor for rotation changes
         self.declare_parameter('publish_to_topics', True)  # Publish to ROS topics vs just logging
-        self.declare_parameter('edge_detection_frames', 5)  # Required consecutive detections for edge rotation
+        self.declare_parameter('edge_detection_frames', 2)  # Required consecutive detections for edge rotation
         
         # Get parameters
         self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
@@ -466,18 +466,16 @@ class ChassisNode(Node):
             }
             
             new_rotation = edge_to_rotation.get(current_lowest_edge, ConfigRotation.ROTATION_0)
-            if screen_id == 2:
-                self.get_logger().info(f"Screen 2 rotation: {new_rotation}")
 
             # Check if this is actually a change from current rotation
             current_rotation = self.screen_edge_rotations.get(screen_id, ConfigRotation.ROTATION_0)
             if new_rotation != current_rotation:
                 # Update rotation
                 self.screen_edge_rotations[screen_id] = new_rotation
-                self.get_logger().info(
-                    f"Screen {screen_id} rotation updated to {new_rotation} "
-                    f"after {consecutive_count} consecutive detections of '{current_lowest_edge}' edge"
-                )
+                # self.get_logger().info(
+                #     f"Screen {screen_id} rotation updated to {new_rotation} "
+                #     f"after {consecutive_count} consecutive detections of '{current_lowest_edge}' edge"
+                # )
                 return new_rotation
             else:
                 # Same rotation - no change needed
@@ -485,10 +483,10 @@ class ChassisNode(Node):
         else:
             # Not enough consecutive detections yet - keep current rotation
             current_rotation = self.screen_edge_rotations.get(screen_id, ConfigRotation.ROTATION_0)
-            self.get_logger().debug(
-                f"Screen {screen_id}: {consecutive_count}/{self.edge_detection_frames} "
-                f"consecutive detections of '{current_lowest_edge}' edge"
-            )
+            # self.get_logger().debug(
+            #     f"Screen {screen_id}: {consecutive_count}/{self.edge_detection_frames} "
+            #     f"consecutive detections of '{current_lowest_edge}' edge"
+            # )
             return current_rotation
             
     def _publish_or_log_orientation_data(self, top_screen, bottom_screen, screen_orientations):
@@ -521,19 +519,19 @@ class ChassisNode(Node):
                     self.screen_pose_publishers[screen_id].publish(screen_msg)
 
         # Otherwise, just print to console
-        # else:
-        # Info logging for screen positions with colors
-        info_msg = "Screen positions: "
-        top_color = self._get_screen_color_name(top_screen['screen_id'])
-        bottom_color = self._get_screen_color_name(bottom_screen['screen_id'])
-        info_msg += f"Top: {top_screen['screen_id']} ({top_color}), Bottom: {bottom_screen['screen_id']} ({bottom_color})\n"
+        else:
+            # Info logging for screen positions with colors
+            info_msg = "Screen positions: "
+            top_color = self._get_screen_color_name(top_screen['screen_id'])
+            bottom_color = self._get_screen_color_name(bottom_screen['screen_id'])
+            info_msg += f"Top: {top_screen['screen_id']} ({top_color}), Bottom: {bottom_screen['screen_id']} ({bottom_color})\n"
 
-        for screen in screen_orientations:
-            screen_id = screen['screen_id']
-            rotation = self.screen_rotations[screen_id]
-            info_msg += f".   Screen {screen_id} ({self._get_screen_color_name(screen_id)}): {self.SCREEN_ROTATIONS[rotation]}\n"
+            for screen in screen_orientations:
+                screen_id = screen['screen_id']
+                rotation = self.screen_rotations[screen_id]
+                info_msg += f".   Screen {screen_id} ({self._get_screen_color_name(screen_id)}): {self.SCREEN_ROTATIONS[rotation]}\n"
 
-        # self.get_logger().info(info_msg)
+            self.get_logger().info(info_msg)
 
     def destroy_node(self):
         """Clean shutdown"""

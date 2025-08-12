@@ -5,9 +5,9 @@ Example strategy that loads a bunch of `quizlet` cards from assets, each with a 
 
   At the top, a fixed `question.json` describes the text of the question: Qu'est-ce que c'est en français?
 
-This strategy subscribes to the motion_detection/ topic and shuffles to a different question if there is a shake
+This strategy subscribes to the motion_detection/ topic and shuffles to a different question if there are 3 consecutive shake detections
 After each new_question, it 
-  - starts a timer of 500ms for shake to stabilize
+  - starts a 3-second stop period where additional motion is ignored
   - prints the question on the top screen
   - prints the answer to the bottom screen
   - prints the images/gif to the four screens that are not top or bottom, in random order. 
@@ -56,8 +56,8 @@ class ShakeQuizletStrategy(BaseStrategy):
     - Loads quizlet cards from assets (each with answer.json and images/)
     - Displays question on top screen, answer on bottom screen
     - Shows hint images on side screens
-    - Changes to new question when shake is detected
-    - Implements stabilization timer after shake detection
+    - Changes to new question when 3 consecutive shake detections occur
+    - Implements 3-second stop period after triggering to ignore additional motion
     """
     
     _strategy_name = "shake_quizlet"
@@ -77,19 +77,18 @@ class ShakeQuizletStrategy(BaseStrategy):
         self.question_file_path = None
         
         # State management
-        self.shake_stabilization_timer = None
-        self.is_stabilizing = False
-        self.last_shake_time = 0.0
+        self.shake_history = []  # Track last 3 shake states
+        self.last_trigger_time = 0.0
+        self.stop_period_duration = 3.0  # 3 seconds stop period
         
         # ROS components (will be created in start_strategy)
         self.screen_publishers = {}
         self.motion_subscription = None
         self.chassis_subscription = None
-        self.screen_pose_subscription = None
         
         # Load quizlet cards from assets
         self._load_quizlet_cards()
-        
+        self.displayed_initial = False
         self.get_logger().info(f"ShakeQuizletStrategy initialized with {len(self.quizlet_cards)} cards")
     
     def _load_quizlet_cards(self):
@@ -130,7 +129,7 @@ class ShakeQuizletStrategy(BaseStrategy):
             # Load image files
             image_files = []
             for img_file in os.listdir(images_path):
-                if img_file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                if img_file.lower().endswith(('.jpg', '.jpeg', '.png', '.gif.d')):
                     image_files.append(os.path.join(images_path, img_file))
             
             if len(image_files) < 4:
@@ -172,7 +171,7 @@ class ShakeQuizletStrategy(BaseStrategy):
             if screen_id != self.top_screen_id and screen_id != self.bottom_screen_id
         ]
         
-        self.get_logger().info(f"Screen assignment updated - Top: {self.top_screen_id}, Bottom: {self.bottom_screen_id}, Sides: {self.side_screen_ids}")
+        # self.get_logger().info(f"Screen assignment updated - Top: {self.top_screen_id}, Bottom: {self.bottom_screen_id}, Sides: {self.side_screen_ids}")
     
     def _display_current_question(self):
         """Display the current question and answer on appropriate screens."""
@@ -209,7 +208,6 @@ class ShakeQuizletStrategy(BaseStrategy):
         
         # Display hint images on side screens
         self._display_hint_images(current_card)
-        
         self.get_logger().info(f"Displayed question for card '{current_card['name']}'")
     
     def _display_hint_images(self, card_data):
@@ -232,7 +230,7 @@ class ShakeQuizletStrategy(BaseStrategy):
             screen_id = available_sides[i]
             image_msg = ScreenMediaCmd()
             image_msg.screen_id = screen_id
-            image_msg.media_type = ContentType.IMAGE
+            image_msg.media_type = ContentType.GIF if image_path.lower().endswith(('.gif.d')) else ContentType.IMAGE
             image_msg.file_path = image_path
             
             # Get publisher for this screen and publish
@@ -249,52 +247,41 @@ class ShakeQuizletStrategy(BaseStrategy):
         self.current_card_index = (self.current_card_index + 1) % len(self.quizlet_cards)
         self.get_logger().info(f"Moved to question {self.current_card_index + 1} of {len(self.quizlet_cards)}")
         
-        # Display the new question after stabilization timer
-        self._start_stabilization_timer()
-    
-    def _start_stabilization_timer(self):
-        """Start 500ms stabilization timer after shake detection."""
-        if self.shake_stabilization_timer:
-            self.shake_stabilization_timer.cancel()
-        
-        self.is_stabilizing = True
-        self.shake_stabilization_timer = self.create_timer(0.5, self._on_stabilization_complete)
-        self.get_logger().info("Started 500ms stabilization timer")
-    
-    def _on_stabilization_complete(self):
-        """Called when stabilization timer completes."""
-        if self.shake_stabilization_timer:
-            self.shake_stabilization_timer.cancel()
-            self.shake_stabilization_timer = None
-        
-        self.is_stabilizing = False
+        # Display the new question immediately
         self._display_current_question()
-        self.get_logger().info("Stabilization complete - displaying new question")
     
     def _motion_callback(self, msg: MotionDetection):
-        """Handle motion detection messages - look for shake events."""
-        if msg.shaking and not self.is_stabilizing:
-            current_time = self.get_clock().now().nanoseconds / 1e9
-            
-            # Debounce shake detection (minimum 1 second between shakes)
-            if current_time - self.last_shake_time > 1.0:
-                self.last_shake_time = current_time
-                self.get_logger().info("Shake detected - changing question")
-                self._next_question()
+        """Handle motion detection messages - look for consecutive shake events."""
+        current_time = self.get_clock().now().nanoseconds / 1e9
+        
+        # Check if we're in the stop period
+        if current_time - self.last_trigger_time < self.stop_period_duration:
+            return  # Ignore all motion during stop period
+        
+        # Add current shake state to history
+        self.shake_history.append(msg.shaking)
+        
+        # Keep only the last 3 states
+        if len(self.shake_history) > 3:
+            self.shake_history.pop(0)
+        
+        # Check if we have 3 consecutive True shaking states
+        if len(self.shake_history) == 3 and all(self.shake_history):
+            self.last_trigger_time = current_time
+            self.shake_history = []  # Reset history after trigger
+            self.get_logger().info("3 consecutive shakes detected - changing question")
+            self._next_question()
     
     def _chassis_callback(self, msg: ChassisOrientation):
         """Handle chassis orientation updates."""
         self._update_screen_assignments(msg)
         
-        # If we're not stabilizing, update the display
-        if not self.is_stabilizing:
+        # Display initial question only if we haven't displayed anything yet
+        if not self.displayed_initial and self.top_screen_id is not None and self.bottom_screen_id is not None:
+            self.get_logger().info(f"Displaying initial question on screens {self.top_screen_id} and {self.bottom_screen_id}")
             self._display_current_question()
-    
-    def _screen_pose_callback(self, msg: ScreenPose):
-        """Handle individual screen pose updates (optional - for future use)."""
-        # This could be used for screen-specific rotation handling
-        pass
-    
+            self.displayed_initial = True
+
     def start_strategy(self):
         """Start the shake quizlet strategy."""
         # Subscribe to motion detection
@@ -308,31 +295,17 @@ class ShakeQuizletStrategy(BaseStrategy):
         # Subscribe to chassis orientation
         self.chassis_subscription = self.create_subscription(
             ChassisOrientation,
-            '/dice_hw/chassis/orientation',
+            '/chassis/orientation',
             self._chassis_callback,
             10
         )
         
-        # Subscribe to screen poses (optional)
-        self.screen_pose_subscription = self.create_subscription(
-            ScreenPose,
-            '/dice_hw/chassis/screen_pose',
-            self._screen_pose_callback,
-            10
-        )
-        
         self.get_logger().info("ShakeQuizletStrategy started - waiting for orientation data")
-        
-        # If we already have screen assignments, display the first question
-        if self.top_screen_id is not None and self.bottom_screen_id is not None:
-            self._display_current_question()
-    
+
     def stop_strategy(self):
         """Stop the shake quizlet strategy."""
-        # Cancel stabilization timer
-        if self.shake_stabilization_timer:
-            self.shake_stabilization_timer.cancel()
-            self.shake_stabilization_timer = None
+        # Reset shake detection state
+        self.shake_history = []
         
         # Destroy subscribers
         if self.motion_subscription:
@@ -343,12 +316,8 @@ class ShakeQuizletStrategy(BaseStrategy):
             self.chassis_subscription.destroy()
             self.chassis_subscription = None
         
-        if self.screen_pose_subscription:
-            self.screen_pose_subscription.destroy()
-            self.screen_pose_subscription = None
-        
         # Destroy publishers
-        for screen_id, publisher in self.screen_publishers.items():
+        for publisher in self.screen_publishers.values():
             if publisher:
                 publisher.destroy()
         self.screen_publishers = {}

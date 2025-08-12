@@ -45,8 +45,8 @@ class MotionDetectorNode(Node):
         self.gyro_magnitude_history = deque(maxlen=self.history_size)
         
         # Detection thresholds
-        self.shake_accel_threshold = 12.0    # m/s² above gravity
-        self.shake_gyro_threshold = 2.0      # rad/s
+        self.shake_accel_threshold = 13.0    # m/s² above gravity
+        self.shake_gyro_threshold = 5.0      # rad/s
         self.shake_variance_threshold = 5.0  # variance threshold for detecting oscillations
         
         # Publishers
@@ -181,6 +181,9 @@ class MotionDetectorNode(Node):
         motion_msg.rotation_intensity = motion_summary['rotation_intensity']
         motion_msg.shake_intensity = motion_summary['shake_intensity']
         motion_msg.stillness_factor = motion_summary['stillness_factor']
+
+        # if motion_summary['shaking']:
+        #     self.get_logger().info("Shaking dice!!!")
         
         self.motion_pub.publish(motion_msg)
 
