@@ -14,6 +14,7 @@ from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 import numpy as np
 import threading
 import time
+from time import perf_counter
 
 # Debugging for macos
 # from config_copy import dice_config
@@ -75,7 +76,7 @@ class ChassisNode(Node):
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('imu_frame', 'imu_link')
         self.declare_parameter('world_frame', 'world')
-        self.declare_parameter('publish_rate', 50.0)
+        self.declare_parameter('publish_rate', 10.0)
         self.declare_parameter('orientation_rate', 10.0)
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('alternative_imu_topic', '/data/imu')
@@ -176,10 +177,7 @@ class ChassisNode(Node):
         
         # Timer for orientation detection (10Hz, always enabled)
         self.orientation_timer = self.create_timer(1.0/self.orientation_rate, self.orientation_callback)
-        
-        # Publish static transforms (IMU to base_link)
-        self._publish_static_transforms()
-        
+
         self.get_logger().info('Dice chassis node initialized')
         self.get_logger().info(f'Base frame: {self.base_frame}')
         self.get_logger().info(f'IMU frame: {self.imu_frame}')
@@ -188,13 +186,7 @@ class ChassisNode(Node):
         self.get_logger().info(f'Edge detection frames required: {self.edge_detection_frames}')
         self.get_logger().info(f'ROS topic publishing: {"enabled" if self.publish_to_topics else "disabled (console only)"}')
         self.get_logger().info('Using default pose until IMU data is received')
-        
-    def _publish_static_transforms(self):
-        """Publish static transforms for the robot"""
-        # Note: Static transforms are now handled by robot_state_publisher from URDF
-        # The URDF defines imu_link as root with base_link as child
-        # We don't need to publish additional static transforms here since the URDF handles it
-        self.get_logger().info('Static transforms handled by robot_state_publisher from URDF')
+
     
     def imu_callback(self, msg):
         """Callback for IMU data - converts sensor_msgs/Imu to internal Pose"""
@@ -254,6 +246,7 @@ class ChassisNode(Node):
     
     def orientation_callback(self):
         """Timer callback for orientation detection and publishing (10Hz)"""
+        st = perf_counter()
         with self.pose_lock:
             pose_time = self.last_pose_time
 
@@ -263,6 +256,7 @@ class ChassisNode(Node):
 
         # Get orientations for all screens using tf frames
         screen_orientations = self._get_all_screen_orientations()
+        self.get_logger().info(f"Gotten orientation in {perf_counter()-st}")
         
         if not screen_orientations:
             print("No screen orientations detected, skipping publishing")
@@ -271,6 +265,8 @@ class ChassisNode(Node):
         # Find top and bottom screens
         top_screen = max(screen_orientations, key=lambda x: x['up_alignment'])
         bottom_screen = min(screen_orientations, key=lambda x: x['up_alignment'])
+
+        self.get_logger().info(f"Found top/bottom {perf_counter()-st}")
 
         # Always compute individual screen poses with stickiness
         for orientation in screen_orientations:
@@ -286,11 +282,13 @@ class ChassisNode(Node):
             if alignment_change > self.rotation_threshold:
                 self.screen_rotations[screen_id] = new_rotation
                 self.screen_up_alignments[screen_id] = orientation['up_alignment']
+            
+        self.get_logger().info(f"Gotten indiv orientation in {perf_counter()-st}")
 
         # Publish or log the orientation data
-        print("Publishing or logging orientation data")
         self._publish_or_log_orientation_data(top_screen, bottom_screen, screen_orientations)
-    
+        self.get_logger().info(f"Orientation callback took {perf_counter()-st}")
+
     def _get_screen_z_position(self, screen_id):
         """Get the z position of a single screen frame in world coordinates"""
         screen_frame = f'screen_{screen_id}_link'
@@ -301,17 +299,17 @@ class ChassisNode(Node):
                 self.world_frame,
                 screen_frame,
                 rclpy.time.Time(),  # Use latest available transform
-                timeout=rclpy.duration.Duration(seconds=0.1)  # Increased timeout
+                timeout=rclpy.duration.Duration(seconds=0.01)  # Increased timeout
             )
             return transform.transform.translation.z
         except tf2_ros.LookupException as e:
-            print(f'LookupException for {screen_frame}: {e}')
+            self.get_logger().info(f'LookupException for {screen_frame}: {e}')
             return None
         except tf2_ros.ExtrapolationException as e:
-            print(f'ExtrapolationException for {screen_frame}: {e}')
+            self.get_logger().info(f'ExtrapolationException for {screen_frame}: {e}')
             return None
         except Exception as e:
-            print(f'Other exception for {screen_frame}: {e}')
+            self.get_logger().info(f'Other exception for {screen_frame}: {e}')
             return None
     
     def _calculate_up_alignment(self, z_position):
@@ -333,7 +331,7 @@ class ChassisNode(Node):
         """
         if len(values_dict) < 2:
             return values_dict
-            
+        
         values_array = np.array(list(values_dict.values()))
         ids_array = np.array(list(values_dict.keys()))
         
@@ -369,7 +367,7 @@ class ChassisNode(Node):
     
     def _get_all_screen_orientations(self):
         """Get orientations for all screens based on tf frame positions"""
-        
+        st = perf_counter()
         # Get z positions for all screens
         screen_positions = {}
         for screen_config in dice_config.screen_configs.values():
@@ -377,9 +375,9 @@ class ChassisNode(Node):
             z_position = self._get_screen_z_position(screen_id)
             if z_position is not None:
                 screen_positions[screen_id] = z_position
-        
+
         if not screen_positions:
-            self.get_logger().debug("No screen positions detected, cannot determine orientations")
+            self.get_logger().info("No screen positions detected, cannot determine orientations")
             return []
             
         # Apply stickiness factor using generic helper
@@ -523,18 +521,18 @@ class ChassisNode(Node):
                     self.screen_pose_publishers[screen_id].publish(screen_msg)
 
         # Otherwise, just print to console
-        else:
-            # Info logging for screen positions with colors
-            info_msg = "Screen positions: "
-            top_color = self._get_screen_color_name(top_screen['screen_id'])
-            bottom_color = self._get_screen_color_name(bottom_screen['screen_id'])
-            info_msg += f"Top: {top_screen['screen_id']} ({top_color}), Bottom: {bottom_screen['screen_id']} ({bottom_color})"
-            self.get_logger().info(info_msg)
+        # else:
+        # Info logging for screen positions with colors
+        info_msg = "Screen positions: "
+        top_color = self._get_screen_color_name(top_screen['screen_id'])
+        bottom_color = self._get_screen_color_name(bottom_screen['screen_id'])
+        info_msg += f"Top: {top_screen['screen_id']} ({top_color}), Bottom: {bottom_screen['screen_id']} ({bottom_color})"
+        self.get_logger().info(info_msg)
 
-            for screen in screen_orientations:
-                screen_id = screen['screen_id']
-                rotation = self.screen_rotations[screen_id]
-                print(f"Screen {screen_id} ({self._get_screen_color_name(screen_id)}): {self.SCREEN_ROTATIONS[rotation]}")
+        for screen in screen_orientations:
+            screen_id = screen['screen_id']
+            rotation = self.screen_rotations[screen_id]
+            print(f"Screen {screen_id} ({self._get_screen_color_name(screen_id)}): {self.SCREEN_ROTATIONS[rotation]}")
 
     def destroy_node(self):
         """Clean shutdown"""

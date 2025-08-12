@@ -3,7 +3,7 @@ U-M Shapiro Design Lab
 Daniel Hou @2024
 
 Game Manager for DiceMaster Central
-Manages game discovery, strategy loading, and lifecycle management.
+Manages game discovery, strategy loading, and simple node lifecycle management.
 """
 import os
 from typing import Dict, Optional, Type
@@ -13,12 +13,9 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 
-from lifecycle_msgs.srv import ChangeState
-from lifecycle_msgs.msg import Transition
-
 from dicemaster_central.config import dice_config
-from dicemaster_central.games.strategy import BaseStrategy
-from dicemaster_central.games.game import DiceGame
+from dicemaster_central.games.strategy import BaseStrategy, load_strategy
+from dicemaster_central.games.game import DiceGame, load_game
 
 # Import service definitions when available
 from dicemaster_central_msgs.srv import DiceGameControl
@@ -26,7 +23,7 @@ from dicemaster_central_msgs.srv import DiceGameControl
 
 class GameManager(Node):
     """
-    Main game manager that discovers and manages games using lifecycle management.
+    Main game manager that discovers and manages games using simple node management.
     Provides simplified APIs: start_game, stop_game, list_games.
     """
     
@@ -34,7 +31,7 @@ class GameManager(Node):
         super().__init__('game_manager')
         
         # Store executor reference for adding/removing nodes
-        self.executor = executor
+        self.executor: MultiThreadedExecutor = executor
         
         # Initialize configuration
         self.game_config = dice_config.game_config
@@ -80,20 +77,6 @@ class GameManager(Node):
         self.get_logger().info(f"Launching game: {self.game_config.default_game}")
         self.start_game(self.game_config.default_game)
     
-    def _transition(self, node_name: str, transition_id: int, wait_sec: float = 5.0) -> bool:
-        """Helper to request lifecycle transitions on strategy nodes."""
-        cli = self.create_client(ChangeState, f'{node_name}/change_state')
-        if not cli.wait_for_service(timeout_sec=wait_sec):
-            self.get_logger().error(f"change_state service not available for {node_name}")
-            return False
-        
-        req = ChangeState.Request()
-        req.transition.id = transition_id
-        fut = cli.call_async(req)
-        rclpy.spin_until_future_complete(self, fut, timeout_sec=wait_sec)
-        res = fut.result()
-        return bool(res and res.success)
-    
     def _traverse_folder(self, folder_path: str, item_processor):
         """Generic folder traversal that calls item_processor for each subdirectory."""
         if not os.path.exists(folder_path):
@@ -112,14 +95,14 @@ class GameManager(Node):
     
     def _load_strategy(self, strategy_dir: str, strategy_name: str):
         """Load a single strategy using the verifier."""
-        strategy_class = BaseStrategy.verify_and_load(strategy_dir, strategy_name, self.get_logger())
+        strategy_class = load_strategy(strategy_dir, strategy_name, self.get_logger())
         if strategy_class:
             self.strategies[strategy_name] = strategy_class
             self.get_logger().info(f"Loaded strategy: {strategy_name} from {strategy_dir}")
     
     def _load_game(self, game_dir: str, game_name: str):
         """Load a single game using the verifier."""
-        game = DiceGame.verify_and_load(game_dir, game_name, self.strategies, self.get_logger())
+        game = load_game(game_dir, game_name, self.strategies, self.get_logger())
         if game:
             self.games[game_name] = game
             self.get_logger().info(f"Loaded game: {game_name} (strategy: {game.strategy_name})")
@@ -194,7 +177,7 @@ class GameManager(Node):
         return list(self.games.keys())
     
     def start_game(self, game_name: str) -> bool:
-        """Start a game by creating and activating its strategy node."""
+        """Start a game by creating and adding its strategy node to the executor."""
         if game_name not in self.games:
             self.get_logger().error(f"Game '{game_name}' not found")
             return False
@@ -205,7 +188,8 @@ class GameManager(Node):
                 return False
         
         game = self.games[game_name]
-        self.get_logger().info("Gotten game")
+        self.get_logger().info(f"Starting game: {game_name}")
+        
         try:
             # Create strategy instance
             strategy_class = self.strategies[game.strategy_name]
@@ -215,24 +199,8 @@ class GameManager(Node):
                 assets_path=game.assets_path
             )
             
-            # 1) Put it under the executor before service calls
+            # Add it to the executor
             self.executor.add_node(strategy_node)
-            
-            # 2) Configure → Activate lifecycle transitions
-            node_name = strategy_node.get_name()
-            if not self._transition(node_name, Transition.TRANSITION_CONFIGURE):
-                self.get_logger().error(f"Configure failed for {node_name}")
-                self.executor.remove_node(strategy_node)
-                strategy_node.destroy_node()
-                return False
-            
-            if not self._transition(node_name, Transition.TRANSITION_ACTIVATE):
-                self.get_logger().error(f"Activate failed for {node_name}")
-                # Best-effort cleanup
-                self._transition(node_name, Transition.TRANSITION_CLEANUP)
-                self.executor.remove_node(strategy_node)
-                strategy_node.destroy_node()
-                return False
             
             # Store references
             self.current_strategy_node = strategy_node
@@ -255,27 +223,25 @@ class GameManager(Node):
         name = node.get_name()
         current_game = self.current_game_name
         
-        ok = True
         try:
-            # Try to gracefully transition down
-            self._transition(name, Transition.TRANSITION_DEACTIVATE)
-            self._transition(name, Transition.TRANSITION_CLEANUP)
-            self._transition(name, Transition.TRANSITION_DESTROY)
-        except Exception as e:
-            self.get_logger().warn(f"Graceful lifecycle shutdown failed for {name}: {e}")
-            ok = False
-        finally:
-            # Always remove from executor and destroy
-            try:
-                self.executor.remove_node(node)
-            except Exception:
-                pass
+            # Stop the strategy
+            node.stop_strategy()
+            
+            # Remove from executor
+            self.executor.remove_node(node)
+            
+            # Destroy the node
             node.destroy_node()
+            
+        except Exception as e:
+            self.get_logger().warn(f"Error during game shutdown for {name}: {e}")
+        finally:
+            # Always clear references
             self.current_strategy_node = None
             self.current_game_name = None
         
         self.get_logger().info(f"Stopped game: {current_game}")
-        return ok
+        return True
     
     def destroy_node(self):
         """Clean shutdown of the game manager."""

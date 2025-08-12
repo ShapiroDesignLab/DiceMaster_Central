@@ -5,15 +5,14 @@ import importlib
 import importlib.util
 from typing import Optional, Type
 
-# NOTE: inherit from LifecycleNode instead of Node
-from rclpy.lifecycle import LifecycleNode, State, TransitionCallbackReturn
+from rclpy.node import Node
 from dicemaster_central.utils import load_directory
 
 
-class BaseStrategy(LifecycleNode, ABC):
+class BaseStrategy(Node, ABC):
     """
     Base class for all strategies in the DiceMaster Central system.
-    Now implemented as a LifecycleNode so it can be managed (configure/activate/deactivate).
+    Simple node-based implementation without lifecycle complexity.
     """
     _strategy_name: str
     def __init__(
@@ -23,30 +22,38 @@ class BaseStrategy(LifecycleNode, ABC):
         assets_path: str,
         verbose: bool = False,
     ):
-        super().__init__(game_name)
+        # Give strategy nodes a guaranteed-unique name to avoid collisions
+        node_name = f"strategy_{game_name}"
+        super().__init__(node_name)
         self._game_name = game_name
-        self.get_logger().info(f"{self._game_name} (strategy={self._strategy_name}) initialized (lifecycle)")
+        self.get_logger().info(f"{self._game_name}, {node_name} (strategy={self._strategy_name}) initialized")
 
         self._config_file = config_file
         self._assets_path = assets_path
         self._verbose = verbose
 
+        self._running = False
+
         # Load configuration
         if not os.path.isfile(self._config_file):
             self.get_logger().error(f"Configuration file {self._config_file} does not exist")
-            raise FileNotFoundError(f"Configuration file {self._config_file} not found")
+            raise FileNotFoundError()
         try:
             self._config = json.load(open(self._config_file, "r", encoding="utf-8"))
         except Exception as e:
             self.get_logger().error(f"Failed to load configuration from {self._config_file}: {e}")
-            # Let lifecycle error handling take over
-            raise
-
+            raise RuntimeError()
         # Load assets
         if not os.path.exists(self._assets_path):
             self.get_logger().error(f"Assets path {self._assets_path} does not exist")
-            raise FileNotFoundError(f"Assets path {self._assets_path} not found")
+            raise FileNotFoundError()
         self._assets = self._load_assets()
+        self.get_logger().info(f"{self._strategy_name}: configured.")
+
+        # Start the strategy immediately upon construction
+        self.start_strategy()
+        self._running = True
+
 
     def _load_assets(self):
         """Load the assets index for this game."""
@@ -58,128 +65,47 @@ class BaseStrategy(LifecycleNode, ABC):
     # --- Abstract work methods your concrete strategies implement ---
     @abstractmethod
     def start_strategy(self):
-        """Start any publishers/timers/work needed while ACTIVE."""
+        """Start any publishers/timers/work needed when strategy becomes active."""
         pass
 
     @abstractmethod
     def stop_strategy(self):
-        """Stop/tear down publishers/timers/work when leaving ACTIVE."""
+        """Stop/tear down publishers/timers/work when strategy is being stopped."""
         pass
 
-    # --- Lifecycle callbacks ---
-    def on_configure(self, state: State) -> TransitionCallbackReturn:
-        """
-        Called when a transition from UNCONFIGURED to INACTIVE is requested.
-        Return SUCCESS to complete the transition, FAILURE to abort.
-        """
-        try:
-            # Configuration is already done in __init__, just acknowledge success
-            self.get_logger().info(f"{self._strategy_name}: configured.")
-            return TransitionCallbackReturn.SUCCESS
-        except Exception as e:
-            self.get_logger().error(f"{self._strategy_name}: configuration failed: {e}")
-            return TransitionCallbackReturn.FAILURE
-
-    def on_activate(self, state: State) -> TransitionCallbackReturn:
-        """
-        Called when a transition to ACTIVE is requested.
-        Return SUCCESS to complete the transition, FAILURE to abort.
-        """
-        try:
-            self.start_strategy()
-            self.get_logger().info(f"{self._strategy_name}: activated.")
-            return TransitionCallbackReturn.SUCCESS
-        except Exception as e:
-            self.get_logger().error(f"{self._strategy_name}: activation failed: {e}")
-            return TransitionCallbackReturn.FAILURE
-
-    def on_deactivate(self, state: State) -> TransitionCallbackReturn:
-        """
-        Called when a transition from ACTIVE to INACTIVE is requested.
-        """
-        try:
-            self.stop_strategy()
-            self.get_logger().info(f"{self._strategy_name}: deactivated.")
-            return TransitionCallbackReturn.SUCCESS
-        except Exception as e:
-            self.get_logger().error(f"{self._strategy_name}: deactivation failed: {e}")
-            return TransitionCallbackReturn.FAILURE
-
-    def on_cleanup(self, state: State) -> TransitionCallbackReturn:
-        """
-        Called when a transition from INACTIVE to UNCONFIGURED is requested.
-        """
-        try:
-            # Clean up any remaining resources
-            self.get_logger().info(f"{self._strategy_name}: cleaned up.")
-            return TransitionCallbackReturn.SUCCESS
-        except Exception as e:
-            self.get_logger().error(f"{self._strategy_name}: cleanup failed: {e}")
-            return TransitionCallbackReturn.FAILURE
-
-    def on_shutdown(self, state: State) -> TransitionCallbackReturn:
-        """
-        Called when shutdown is requested from any state.
-        """
-        try:
-            # Ensure strategy is stopped
-            self.stop_strategy()
-            self.get_logger().info(f"{self._strategy_name}: shutdown.")
-            return TransitionCallbackReturn.SUCCESS
-        except Exception as e:
-            self.get_logger().error(f"{self._strategy_name}: shutdown failed: {e}")
-            return TransitionCallbackReturn.FAILURE
-
-    # Optional: keep your explicit cleanup path if you use it elsewhere
-    def _destroy(self):
-        try:
-            self.stop_strategy()
-        except Exception:
-            # avoid raising in destroy path
-            pass
-        super().destroy_node()
-
-    def __del__(self):
-        # Avoid heavy work in __del__; lifecycle shutdown is preferred.
-        try:
-            self._destroy()
-        except Exception:
-            pass
+def load_strategy(strategy_dir: str, strategy_name: str, logger=None) -> Optional[Type['BaseStrategy']]:
+    """Verify and load a strategy from {strategy_name}/{strategy_name}.py."""
+    strategy_file = os.path.join(strategy_dir, f'{strategy_name}.py')
     
-    @staticmethod
-    def verify_and_load(strategy_dir: str, strategy_name: str, logger=None) -> Optional[Type['BaseStrategy']]:
-        """Verify and load a strategy from {strategy_name}/{strategy_name}.py."""
-        strategy_file = os.path.join(strategy_dir, f'{strategy_name}.py')
+    if not os.path.isfile(strategy_file):
+        if logger:
+            logger.warn(f"No {strategy_name}.py found in strategy directory: {strategy_dir}")
+        return None
+    
+    try:
+        # Create module spec and load the strategy implementation directly
+        spec = importlib.util.spec_from_file_location(f"strategy_{strategy_name}", strategy_file)
+        if spec is None or spec.loader is None:
+            if logger:
+                logger.warn(f"Could not create module spec for {strategy_file}")
+            return None
+            
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
         
-        if not os.path.isfile(strategy_file):
-            if logger:
-                logger.warn(f"No {strategy_name}.py found in strategy directory: {strategy_dir}")
-            return None
+        # Find BaseStrategy subclasses (but not BaseStrategy itself)
+        for attr_name in dir(module):
+            attr = getattr(module, attr_name)
+            if (isinstance(attr, type) and 
+                issubclass(attr, BaseStrategy) and 
+                attr != BaseStrategy):
+                return attr
         
-        try:
-            # Create module spec and load the strategy implementation directly
-            spec = importlib.util.spec_from_file_location(f"strategy_{strategy_name}", strategy_file)
-            if spec is None or spec.loader is None:
-                if logger:
-                    logger.warn(f"Could not create module spec for {strategy_file}")
-                return None
-                
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            
-            # Find BaseStrategy subclasses (but not BaseStrategy itself)
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if (isinstance(attr, type) and 
-                    issubclass(attr, BaseStrategy) and 
-                    attr != BaseStrategy):
-                    return attr
-            
-            if logger:
-                logger.warn(f"No BaseStrategy subclass found in {strategy_file}")
-            return None
-            
-        except Exception as e:
-            if logger:
-                logger.error(f"Failed to load strategy from {strategy_file}: {e}")
-            return None
+        if logger:
+            logger.warn(f"No BaseStrategy subclass found in {strategy_file}")
+        return None
+        
+    except Exception as e:
+        if logger:
+            logger.error(f"Failed to load strategy from {strategy_file}: {e}")
+        return None

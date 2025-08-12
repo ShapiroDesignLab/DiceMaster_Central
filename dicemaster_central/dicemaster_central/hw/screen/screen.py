@@ -138,7 +138,7 @@ class Screen:
             return
         
         self.request_status[req_id] = RequestStatus.PENDING
-        self.node.get_logger().info(f"Queuening media request for screen {self.screen_id} with ID {req_id}")
+        # self.node.get_logger().info(f"Queuening media request for screen {self.screen_id} with ID {req_id}")
         self.media_processing_queue.put((req_id, request_msg))
 
     def push_to_bus_manager(self, msgs, priority=MessagePriority.NORMAL) -> None:
@@ -198,7 +198,7 @@ class Screen:
             self.last_content_type = ContentType.TEXT
             
             # Push to bus manager
-            self.node.get_logger().info("Pushed text prompt to bus")
+            # self.node.get_logger().info("Pushed text prompt to bus")
             self.push_to_bus_manager(text_message, MessagePriority.HIGH)
             return True
             
@@ -323,7 +323,7 @@ class Screen:
 
     def destroy_gif_replay(self):
         """Destroy GIF replay resources"""
-        self.node.get_logger().info("GIF playback stopped")
+        # self.node.get_logger().info("GIF playback stopped")
         with self.gif_lock:
             self.gif_active = False
             if self.gif_timer:

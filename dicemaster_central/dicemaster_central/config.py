@@ -59,7 +59,7 @@ class GameConfig:
         os.path.expanduser("~/.dicemaster/strategies"),
         os.path.join(EXAMPLE_DIR, "strategies")
     ]
-    default_game="pipeline_test"
+    default_game="test"
     
 class DiceConfig:
     spi_config = SPIConfig()
@@ -70,11 +70,11 @@ class DiceConfig:
     }
     screen_configs: Dict[int, ScreenConfig] = {
         1: ScreenConfig(id=1, bus_id=0, default_orientation=Rotation(0), description="Screen 1"),
-        2: ScreenConfig(id=2, bus_id=0, default_orientation=Rotation(0), description="Screen 2"),
+        2: ScreenConfig(id=2, bus_id=3, default_orientation=Rotation(3), description="Screen 2"),
         3: ScreenConfig(id=3, bus_id=1, default_orientation=Rotation(0), description="Screen 3"),
-        4: ScreenConfig(id=4, bus_id=1, default_orientation=Rotation(0), description="Screen 4"),
-        5: ScreenConfig(id=5, bus_id=3, default_orientation=Rotation(0), description="Screen 5"),
-        6: ScreenConfig(id=6, bus_id=3, default_orientation=Rotation(0), description="Screen 6"),
+        4: ScreenConfig(id=4, bus_id=3, default_orientation=Rotation(2), description="Screen 4"),
+        5: ScreenConfig(id=5, bus_id=1, default_orientation=Rotation(0), description="Screen 5"),
+        6: ScreenConfig(id=6, bus_id=0, default_orientation=Rotation(0), description="Screen 6"),
     }
     active_spi_controllers = set(bus_configs.keys())
     global_screen_config: GlobalScreenConfig = GlobalScreenConfig()
