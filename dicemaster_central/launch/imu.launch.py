@@ -66,7 +66,7 @@ def generate_launch_description():
             'gain': LaunchConfiguration('gain'),
             'world_frame': LaunchConfiguration('world_frame'),
             'publish_tf': True,
-            'fixed_frame': 'odom',
+            'fixed_frame': 'world',
             'stateless': False,
             'reverse_tf': False,
             'constant_dt': 0.0,  # Use IMU timestamp

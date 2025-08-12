@@ -138,7 +138,7 @@ class Screen:
             return
         
         self.request_status[req_id] = RequestStatus.PENDING
-        # self.node.get_logger().info(f"Queuening media request for screen {self.screen_id} with ID {req_id}")
+        # self.node.get_logger().info(f"Queuening media request for screen {self.screen_id} with rot={self.current_rotation}")
         self.media_processing_queue.put((req_id, request_msg))
 
     def push_to_bus_manager(self, msgs, priority=MessagePriority.NORMAL) -> None:

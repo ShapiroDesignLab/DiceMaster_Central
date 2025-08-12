@@ -26,6 +26,10 @@ from dicemaster_central.config import dice_config
 # from constants_copy import Rotation as ConfigRotation
 # from config_copy import dice_config
 
+# class LatchedValue:
+#     def __init__(self):
+#         self.last_val = 
+
 # Conditional imports for ROS message types only
 ChassisOrientation = None
 ScreenPose = None
@@ -82,7 +86,7 @@ class ChassisNode(Node):
         self.declare_parameter('alternative_imu_topic', '/data/imu')
         self.declare_parameter('rotation_threshold', 0.7)  # Stickiness factor for rotation changes
         self.declare_parameter('publish_to_topics', True)  # Publish to ROS topics vs just logging
-        self.declare_parameter('edge_detection_frames', 10)  # Required consecutive detections for edge rotation
+        self.declare_parameter('edge_detection_frames', 5)  # Required consecutive detections for edge rotation
         
         # Get parameters
         self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
@@ -256,8 +260,7 @@ class ChassisNode(Node):
 
         # Get orientations for all screens using tf frames
         screen_orientations = self._get_all_screen_orientations()
-        self.get_logger().info(f"Gotten orientation in {perf_counter()-st}")
-        
+
         if not screen_orientations:
             print("No screen orientations detected, skipping publishing")
             return
@@ -266,15 +269,12 @@ class ChassisNode(Node):
         top_screen = max(screen_orientations, key=lambda x: x['up_alignment'])
         bottom_screen = min(screen_orientations, key=lambda x: x['up_alignment'])
 
-        self.get_logger().info(f"Found top/bottom {perf_counter()-st}")
-
         # Always compute individual screen poses with stickiness
         for orientation in screen_orientations:
             screen_id = orientation['screen_id']
             
             # Calculate rotation based on gravity direction and default orientation
             new_rotation = self._calculate_screen_rotation_from_edges(screen_id)
-            
             # Apply stickiness - only change rotation if alignment changes significantly
             old_alignment = self.screen_up_alignments.get(screen_id, -1.0)
             alignment_change = abs(orientation['up_alignment'] - old_alignment)
@@ -282,12 +282,10 @@ class ChassisNode(Node):
             if alignment_change > self.rotation_threshold:
                 self.screen_rotations[screen_id] = new_rotation
                 self.screen_up_alignments[screen_id] = orientation['up_alignment']
-            
-        self.get_logger().info(f"Gotten indiv orientation in {perf_counter()-st}")
 
         # Publish or log the orientation data
         self._publish_or_log_orientation_data(top_screen, bottom_screen, screen_orientations)
-        self.get_logger().info(f"Orientation callback took {perf_counter()-st}")
+
 
     def _get_screen_z_position(self, screen_id):
         """Get the z position of a single screen frame in world coordinates"""
@@ -468,7 +466,9 @@ class ChassisNode(Node):
             }
             
             new_rotation = edge_to_rotation.get(current_lowest_edge, ConfigRotation.ROTATION_0)
-            
+            if screen_id == 2:
+                self.get_logger().info(f"Screen 2 rotation: {new_rotation}")
+
             # Check if this is actually a change from current rotation
             current_rotation = self.screen_edge_rotations.get(screen_id, ConfigRotation.ROTATION_0)
             if new_rotation != current_rotation:
@@ -511,7 +511,7 @@ class ChassisNode(Node):
                 # Create and publish screen pose message
                 screen_msg = ScreenPose()
                 screen_msg.screen_id = screen_id
-                screen_msg.rotation = self.screen_rotations[screen_id]
+                screen_msg.rotation = self.screen_edge_rotations[screen_id]
                 screen_msg.up_alignment = orientation['up_alignment']
                 screen_msg.is_facing_up = (screen_id == top_screen['screen_id'] and 
                                          orientation['up_alignment'] > 0.7)
@@ -526,13 +526,14 @@ class ChassisNode(Node):
         info_msg = "Screen positions: "
         top_color = self._get_screen_color_name(top_screen['screen_id'])
         bottom_color = self._get_screen_color_name(bottom_screen['screen_id'])
-        info_msg += f"Top: {top_screen['screen_id']} ({top_color}), Bottom: {bottom_screen['screen_id']} ({bottom_color})"
-        self.get_logger().info(info_msg)
+        info_msg += f"Top: {top_screen['screen_id']} ({top_color}), Bottom: {bottom_screen['screen_id']} ({bottom_color})\n"
 
         for screen in screen_orientations:
             screen_id = screen['screen_id']
             rotation = self.screen_rotations[screen_id]
-            print(f"Screen {screen_id} ({self._get_screen_color_name(screen_id)}): {self.SCREEN_ROTATIONS[rotation]}")
+            info_msg += f".   Screen {screen_id} ({self._get_screen_color_name(screen_id)}): {self.SCREEN_ROTATIONS[rotation]}\n"
+
+        # self.get_logger().info(info_msg)
 
     def destroy_node(self):
         """Clean shutdown"""

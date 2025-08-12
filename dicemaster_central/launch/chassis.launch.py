@@ -22,7 +22,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'publish_rate',
-            default_value='50.0',
+            default_value='25.0',
             description='Publishing rate in Hz for chassis'
         ),
         DeclareLaunchArgument(
@@ -31,20 +31,7 @@ def generate_launch_description():
             description='Enable publishing to topics'
         ),
     ])
-    
-    # Dice Chassis Node
-    launch_nodes.append(
-        Node(
-            package='dicemaster_central',
-            executable='chassis.py',
-            name='dice_chassis_node',
-            parameters=[{
-                'publish_rate': LaunchConfiguration('publish_rate'),
-                'publish_to_topics': LaunchConfiguration('publish_to_topics'),
-            }],
-        )
-    )
-    
+
     # Robot State Publisher (publishes robot model from URDF)
     # Read URDF file content
     urdf_file_path = '/home/dice/DiceMaster/DiceMaster_Central/dicemaster_central/resource/dice.urdf'
@@ -60,6 +47,19 @@ def generate_launch_description():
                 'robot_description': robot_description_content
             }],
             output='screen'
+        )
+    )
+    
+    # Dice Chassis Node
+    launch_nodes.append(
+        Node(
+            package='dicemaster_central',
+            executable='chassis.py',
+            name='dice_chassis_node',
+            parameters=[{
+                'publish_rate': LaunchConfiguration('publish_rate'),
+                'publish_to_topics': LaunchConfiguration('publish_to_topics'),
+            }],
         )
     )
 
