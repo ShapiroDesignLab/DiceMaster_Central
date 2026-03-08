@@ -242,9 +242,11 @@ class ChassisNode(Node):
         transform.transform.rotation.z = current_pose.orientation.z
         transform.transform.rotation.w = current_pose.orientation.w
         
-        # Log warning if pose data is stale (but not on first run)
+        # Log warning once on IMU signal loss, and once when restored
         if pose_time is not None and (time.time() - pose_time > 1.0):
-            self.get_logger().warn('IMU pose data is stale - maintaining last known orientation', throttle_duration_sec=5.0)
+            if self.imu_connected:
+                self.imu_connected = False
+                self.get_logger().warn('IMU signal lost - maintaining last known orientation')
         
         self.tf_broadcaster.sendTransform(transform)
     
