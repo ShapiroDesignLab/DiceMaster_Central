@@ -1,0 +1,30 @@
+base_joint:
+  quaternion: [-1.3268e-06, -1, 1.3268e-06, 0]
+
+face_offset: 0.0508
+
+canonical_edges:
+  top: [0.0475, 0, 0.001]
+  left: [0, 0.0475, 0.001]
+  bottom: [-0.0475, 0, 0.001]
+  right: [0, -0.0475, 0.001]
+
+screens:
+  1:
+    joint_quaternion: [0, 0, 0, 1]
+  2:
+    joint_quaternion: [-0.7071080799, 0, 0, 0.7071054825]
+  3:
+    joint_quaternion: [0, -0.7071080799, 0, 0.7071054825]
+  4:
+    joint_quaternion: [0.5000018366, 0.5, -0.5, 0.4999981634]
+  5:
+    joint_quaternion: [0.7071080799, -9.382e-07, 0.7071054825, 9.382e-07]
+  6:
+    joint_quaternion: [1.3268e-06, 1, 1.3268e-06, 0]
+
+parameters:
+  rotation_threshold: 0.7
+  edge_detection_frames: 2
+  orientation_rate: 10.0
+  publish_tf: true
