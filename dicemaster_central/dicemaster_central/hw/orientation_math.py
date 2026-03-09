@@ -112,7 +112,10 @@ class DiceOrientation:
         )
         for i, sid in enumerate(self.screen_ids):
             # Rotate all 4 edges in one call per screen.
-            self._edge_positions[i] = joint_rotations[i].apply(canonical_edge_offsets)
+            self._edge_positions[i] = (
+                joint_rotations[i].apply(canonical_edge_offsets)
+                + self._face_centres[i]
+            )
 
         # Build reverse lookup: screen_id -> index.
         self._id_to_idx = {sid: i for i, sid in enumerate(self.screen_ids)}
