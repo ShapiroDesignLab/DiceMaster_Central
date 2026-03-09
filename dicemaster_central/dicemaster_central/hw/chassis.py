@@ -15,23 +15,11 @@ import numpy as np
 import os
 import threading
 import time
-from time import perf_counter
-
-# Debugging for macos
-# from config_copy import dice_config
-# from constants_copy import Rotation as ConfigRotation
 
 from dicemaster_central.constants import Rotation as ConfigRotation
 from dicemaster_central.config import dice_config
 from dicemaster_central.hw.orientation_math import DiceOrientation
 from ament_index_python.packages import get_package_share_directory
-
-# from constants_copy import Rotation as ConfigRotation
-# from config_copy import dice_config
-
-# class LatchedValue:
-#     def __init__(self):
-#         self.last_val = 
 
 # Conditional imports for ROS message types only
 ChassisOrientation = None
@@ -140,6 +128,7 @@ class ChassisNode(Node):
         _pkg_share = get_package_share_directory('dicemaster_central')
         _config_path = os.path.join(_pkg_share, 'resource', 'dice_geometry.yaml')
         self._dice_orientation = DiceOrientation(_config_path)
+        self._last_orientation_result = None
 
         # Current robot pose - initialize with default pose rotated π around roll axis
         self.current_pose = Pose()
@@ -266,7 +255,6 @@ class ChassisNode(Node):
     
     def orientation_callback(self):
         """Timer callback for orientation detection and publishing (10Hz)"""
-        st = perf_counter()
         with self.pose_lock:
             pose_time = self.last_pose_time
 
@@ -274,11 +262,11 @@ class ChassisNode(Node):
             # No pose data received yet
             return
 
-        # Get orientations for all screens using tf frames
+        # Get orientations for all screens
         screen_orientations = self._get_all_screen_orientations()
 
         if not screen_orientations:
-            print("No screen orientations detected, skipping publishing")
+            self.get_logger().debug("No screen orientations detected, skipping publishing")
             return
             
         # Find top and bottom screens
@@ -304,35 +292,6 @@ class ChassisNode(Node):
         self._publish_or_log_orientation_data(top_screen, bottom_screen, screen_orientations)
 
 
-    def _get_screen_z_position(self, screen_id):
-        """Get the z position of a single screen frame in world coordinates"""
-        screen_frame = f'screen_{screen_id}_link'
-        
-        try:
-            # Try with latest available transform instead of current time
-            transform = self.tf_buffer.lookup_transform(
-                self.world_frame,
-                screen_frame,
-                rclpy.time.Time(),  # Use latest available transform
-                timeout=rclpy.duration.Duration(seconds=0.01)  # Increased timeout
-            )
-            return transform.transform.translation.z
-        except tf2_ros.LookupException as e:
-            self.get_logger().info(f'LookupException for {screen_frame}: {e}')
-            return None
-        except tf2_ros.ExtrapolationException as e:
-            self.get_logger().info(f'ExtrapolationException for {screen_frame}: {e}')
-            return None
-        except Exception as e:
-            self.get_logger().info(f'Other exception for {screen_frame}: {e}')
-            return None
-    
-    def _calculate_up_alignment(self, z_position):
-        """Convert z position to up_alignment value [-1, 1]"""
-        # The dice has screens at ±0.0508m, so max range is about 0.1016m
-        up_alignment = z_position / 0.0508  # This gives -1 to +1 for bottom to top
-        return max(-1.0, min(1.0, up_alignment))  # Clamp to [-1, 1]
-    
     def _apply_sticky_selection(self, values_dict, margin=0.01, mode='max'):
         """Generic stickiness helper for selecting max/min values with margin
         
@@ -404,28 +363,6 @@ class ChassisNode(Node):
             })
 
         return orientations
-    
-    def _get_screen_edge_positions(self, screen_id):
-        """Get the z positions of all edge frames for a screen"""
-        edge_names = ['top', 'right', 'bottom', 'left']
-        edge_positions = {}
-        
-        for edge_name in edge_names:
-            edge_frame = f'screen_{screen_id}_edge_{edge_name}'
-            try:
-                transform = self.tf_buffer.lookup_transform(
-                    self.world_frame,
-                    edge_frame,
-                    rclpy.time.Time(),  # Use latest available transform
-                    timeout=rclpy.duration.Duration(seconds=0.01)  # Much shorter timeout
-                )
-                edge_positions[edge_name] = transform.transform.translation.z
-                print(f"Edge {edge_name} position for screen {screen_id}: {edge_positions[edge_name]:.4f}")
-            except (tf2_ros.LookupException, tf2_ros.ExtrapolationException, Exception):
-                # Skip this edge if transform not available - don't log to avoid spam
-                pass
-                
-        return edge_positions if edge_positions else None
     
     def _calculate_screen_rotation_from_edges(self, screen_id):
         """Calculate screen rotation based on which edge is lowest (closest to gravity).
