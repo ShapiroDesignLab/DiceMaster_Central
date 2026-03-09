@@ -140,7 +140,6 @@ class ChassisNode(Node):
         # Motion detection state (merged from standalone motion detector)
         self._accel_magnitude_history = deque(maxlen=50)
         self._gyro_magnitude_history = deque(maxlen=50)
-        self._shake_accel_threshold = 13.0
         self._shake_gyro_threshold = 5.0
         self._shake_variance_threshold = 5.0
 
@@ -415,8 +414,9 @@ class ChassisNode(Node):
                 motion_msg = MotionDetection()
                 motion_msg.header.stamp = self.get_clock().now().to_msg()
                 motion_msg.shaking = self._detect_shaking()
-                motion_msg.shake_intensity = self._get_shake_intensity()
-                motion_msg.stillness_factor = self._get_stillness_factor()
+                shake_intensity = self._get_shake_intensity()
+                motion_msg.shake_intensity = shake_intensity
+                motion_msg.stillness_factor = max(0.0, 1.0 - shake_intensity)
                 self.motion_pub.publish(motion_msg)
 
         # Otherwise, just print to console
