@@ -3,8 +3,10 @@
 # Wait for network or graphical environment to be ready (optional delay)
 sleep 3
 
-# Source your ROS 2 setup and workspace
-source /home/dice/DiceMaster/DiceMaster_ROS_workspace/prepare.sh
+# Source ROS2 and workspace
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_ROOT/scripts/setup_workspace.sh" --no-build
 
-# Launch your ROS 2 launch file
+# Launch DiceMaster
 ros2 launch dicemaster_central dicemaster.launch.py

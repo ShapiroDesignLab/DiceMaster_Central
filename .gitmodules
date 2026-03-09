@@ -1,0 +1,4 @@
+[submodule "deps/imu_tools"]
+	path = deps/imu_tools
+	url = git@github.com:CCNYRoboticsLab/imu_tools.git
+	branch = humble

@@ -1,8 +1,23 @@
 **/__pycache__/
 *.pycg
-
 **.pyc
 *_copy.py
 
+# ROS workspace build artifacts
+ros_ws/build/
+ros_ws/install/
+ros_ws/log/
+ros_ws/src/
+
+# IDE
+.vscode/
+
+# OS
+**.DS_Store
+
+# Secrets
+.env
+
+# Claude
 CLAUDE.md
 .claude/
