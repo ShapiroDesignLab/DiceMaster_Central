@@ -138,7 +138,7 @@ class ChassisNode(Node):
 
         # Vectorized orientation math (replaces per-tick TF lookups)
         _pkg_share = get_package_share_directory('dicemaster_central')
-        _config_path = os.path.join(_pkg_share, 'dice_geometry.yaml')
+        _config_path = os.path.join(_pkg_share, 'resource', 'dice_geometry.yaml')
         self._dice_orientation = DiceOrientation(_config_path)
 
         # Current robot pose - initialize with default pose rotated π around roll axis
