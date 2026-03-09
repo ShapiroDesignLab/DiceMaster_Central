@@ -64,7 +64,7 @@ def generate_launch_description():
             'use_mag': LaunchConfiguration('use_mag'),
             'gain': LaunchConfiguration('gain'),
             'world_frame': LaunchConfiguration('world_frame'),
-            'publish_tf': True,
+            'publish_tf': False,
             'fixed_frame': 'world',
             'stateless': False,
             'reverse_tf': False,
