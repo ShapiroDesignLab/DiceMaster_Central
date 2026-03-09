@@ -128,7 +128,7 @@ class ChassisNode(Node):
             screen_id = screen_config.id  # Config now uses 1-6 directly
             self.screen_rotations[screen_id] = screen_config.default_orientation
             self.screen_up_alignments[screen_id] = -1.0  # Start with fully down
-            self.screen_edge_rotations[screen_id] = 0  # Start with 0 rotation
+            self.screen_edge_rotations[screen_id] = ConfigRotation.ROTATION_0
             self.screen_edge_detection_history[screen_id] = []  # Empty history
             self.screen_edge_consecutive_count[screen_id] = 0  # No consecutive detections yet
         
@@ -161,12 +161,15 @@ class ChassisNode(Node):
     
     def imu_callback(self, msg):
         """Callback for IMU data — store orientation and motion sensor data."""
+        first_connect = False
         with self.pose_lock:
             self._imu_orientation = msg.orientation
             self.last_pose_time = time.time()
             if not self.imu_connected:
                 self.imu_connected = True
-                self.get_logger().info('IMU data connected - using live orientation')
+                first_connect = True
+        if first_connect:
+            self.get_logger().info('IMU data connected - using live orientation')
 
     def _get_imu_quaternion(self) -> np.ndarray:
         """Extract the current IMU quaternion as [x, y, z, w] numpy array."""
@@ -406,6 +409,7 @@ def main(args=None):
             node.destroy_node()
         if executor is not None:
             executor.shutdown()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
