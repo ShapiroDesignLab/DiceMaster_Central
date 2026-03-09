@@ -1,16 +1,13 @@
 """
-Dice chassis node for managing robot pose transformations and screen orientation detection.
-Subscribes to IMU data and publishes TF transforms and screen orientation messages.
+Dice chassis node for managing robot orientation and screen orientation detection.
+Subscribes to IMU data and publishes screen orientation messages.
 """
 
 import rclpy
 from rclpy.node import Node
-import rclpy.logging
 
-from geometry_msgs.msg import Pose, TransformStamped
+from geometry_msgs.msg import Quaternion
 from sensor_msgs.msg import Imu
-import tf2_ros
-from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 import numpy as np
 import os
 import threading
@@ -36,12 +33,11 @@ def _import_ros_message_deps():
 
 class ChassisNode(Node):
     """
-    ROS2 node that manages the dice robot chassis and handles pose transformations.
-    
+    ROS2 node that manages the dice robot chassis orientation.
+
     This node:
     1. Subscribes to IMU data for robot orientation
-    2. Publishes TF transformations for all robot frames
-    3. Publishes screen orientation messages based on tf frame positions
+    2. Publishes screen orientation messages based on computed face positions
     """
     
     # Screen color mapping based on URDF
@@ -68,22 +64,14 @@ class ChassisNode(Node):
         super().__init__('dice_chassis_node')
         
         # Declare parameters
-        self.declare_parameter('base_frame', 'base_link')
-        self.declare_parameter('imu_frame', 'imu_link')
-        self.declare_parameter('world_frame', 'world')
-        self.declare_parameter('publish_rate', 10.0)
         self.declare_parameter('orientation_rate', 10.0)
         self.declare_parameter('imu_topic', '/imu/data')
         self.declare_parameter('alternative_imu_topic', '/data/imu')
         self.declare_parameter('rotation_threshold', 0.7)  # Stickiness factor for rotation changes
         self.declare_parameter('publish_to_topics', True)  # Publish to ROS topics vs just logging
         self.declare_parameter('edge_detection_frames', 2)  # Required consecutive detections for edge rotation
-        
+
         # Get parameters
-        self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
-        self.imu_frame = self.get_parameter('imu_frame').get_parameter_value().string_value
-        self.world_frame = self.get_parameter('world_frame').get_parameter_value().string_value
-        self.publish_rate = self.get_parameter('publish_rate').get_parameter_value().double_value
         self.orientation_rate = self.get_parameter('orientation_rate').get_parameter_value().double_value
         self.imu_topic = self.get_parameter('imu_topic').get_parameter_value().string_value
         self.alt_imu_topic = self.get_parameter('alternative_imu_topic').get_parameter_value().string_value
@@ -118,27 +106,14 @@ class ChassisNode(Node):
         else:
             self.chassis_orientation_pub = None
             self.screen_pose_publishers = {}
-        # TF2 setup
-        self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
-        self.tf_broadcaster = TransformBroadcaster(self)
-        self.static_tf_broadcaster = StaticTransformBroadcaster(self)
-
-        # Vectorized orientation math (replaces per-tick TF lookups)
+        # Vectorized orientation math
         _pkg_share = get_package_share_directory('dicemaster_central')
         _config_path = os.path.join(_pkg_share, 'resource', 'dice_geometry.yaml')
         self._dice_orientation = DiceOrientation(_config_path)
         self._last_orientation_result = None
 
-        # Current robot pose - initialize with default pose rotated π around roll axis
-        self.current_pose = Pose()
-        self.current_pose.position.x = 0.0
-        self.current_pose.position.y = 0.0
-        self.current_pose.position.z = 0.0
-        self.current_pose.orientation.x = 1.0  # π rotation around X-axis (roll)
-        self.current_pose.orientation.y = 0.0
-        self.current_pose.orientation.z = 0.0
-        self.current_pose.orientation.w = 0.0  # π rotation quaternion
+        # Current IMU orientation quaternion (default: pi around X)
+        self._imu_orientation = Quaternion(x=1.0, y=0.0, z=0.0, w=0.0)
         self.pose_lock = threading.Lock()
         self.last_pose_time = None
         self.imu_connected = False
@@ -173,15 +148,10 @@ class ChassisNode(Node):
             10
         )
         
-        # Timer for publishing transforms (50Hz)
-        self.timer = self.create_timer(1.0/self.publish_rate, self.timer_callback)
-        
         # Timer for orientation detection (10Hz, always enabled)
         self.orientation_timer = self.create_timer(1.0/self.orientation_rate, self.orientation_callback)
 
         self.get_logger().info('Dice chassis node initialized')
-        self.get_logger().info(f'Base frame: {self.base_frame}')
-        self.get_logger().info(f'IMU frame: {self.imu_frame}')
         self.get_logger().info(f'IMU topics: {self.imu_topic}, {self.alt_imu_topic}')
         self.get_logger().info('Screen orientation: always enabled')
         self.get_logger().info(f'Edge detection frames required: {self.edge_detection_frames}')
@@ -190,76 +160,29 @@ class ChassisNode(Node):
 
     
     def imu_callback(self, msg):
-        """Callback for IMU data - converts sensor_msgs/Imu to internal Pose"""
-        # Create pose from IMU orientation
-        pose = Pose()
-        pose.position.x = 0.0  # IMU only provides orientation
-        pose.position.y = 0.0
-        pose.position.z = 0.0
-        pose.orientation = msg.orientation
-        
-        # Update internal pose
+        """Callback for IMU data — store orientation and motion sensor data."""
         with self.pose_lock:
-            self.current_pose = pose
+            self._imu_orientation = msg.orientation
             self.last_pose_time = time.time()
             if not self.imu_connected:
                 self.imu_connected = True
                 self.get_logger().info('IMU data connected - using live orientation')
-        
-        # Log IMU updates (debug)
-        if self.get_logger().get_effective_level() <= rclpy.logging.LoggingSeverity.DEBUG:
-            q = msg.orientation
-            self.get_logger().debug(f'Received IMU: q=({q.w:.3f}, {q.x:.3f}, {q.y:.3f}, {q.z:.3f})')
 
     def _get_imu_quaternion(self) -> np.ndarray:
         """Extract the current IMU quaternion as [x, y, z, w] numpy array."""
         with self.pose_lock:
-            o = self.current_pose.orientation
+            o = self._imu_orientation
             return np.array([o.x, o.y, o.z, o.w])
 
-    def timer_callback(self):
-        """Timer callback for publishing transforms"""
-        # Publish dynamic transforms
-        self._publish_dynamic_transforms()
-    
-    def _publish_dynamic_transforms(self):
-        """Publish dynamic transforms based on current pose"""
-        with self.pose_lock:
-            current_pose = self.current_pose
-            pose_time = self.last_pose_time
-        
-        # Publish the world to imu_link transform (imu_link is now the root frame)
-        transform = TransformStamped()
-        transform.header.stamp = self.get_clock().now().to_msg()
-        transform.header.frame_id = self.world_frame
-        transform.child_frame_id = self.imu_frame  # Changed from base_frame to imu_frame
-        
-        # Position (dice position is always at origin)
-        transform.transform.translation.x = current_pose.position.x
-        transform.transform.translation.y = current_pose.position.y
-        transform.transform.translation.z = current_pose.position.z
-        
-        # Always use current pose orientation (maintain last known orientation when stale)
-        transform.transform.rotation.x = current_pose.orientation.x
-        transform.transform.rotation.y = current_pose.orientation.y
-        transform.transform.rotation.z = current_pose.orientation.z
-        transform.transform.rotation.w = current_pose.orientation.w
-        
-        # Log warning once on IMU signal loss, and once when restored
-        if pose_time is not None and (time.time() - pose_time > 1.0):
-            if self.imu_connected:
-                self.imu_connected = False
-                self.get_logger().warn('IMU signal lost - maintaining last known orientation')
-        
-        self.tf_broadcaster.sendTransform(transform)
-    
     def orientation_callback(self):
         """Timer callback for orientation detection and publishing (10Hz)"""
         with self.pose_lock:
             pose_time = self.last_pose_time
 
         if pose_time is None or time.time() - pose_time > 1.0:
-            # No pose data received yet
+            if self.imu_connected and pose_time is not None:
+                self.imu_connected = False
+                self.get_logger().warn('IMU signal lost - maintaining last known orientation')
             return
 
         # Get orientations for all screens
@@ -467,20 +390,15 @@ class ChassisNode(Node):
 
 def main(args=None):
     import rclpy
-    from rclpy.executors import MultiThreadedExecutor
-    
+    from rclpy.executors import SingleThreadedExecutor
     rclpy.init(args=args)
-    
     node = None
     executor = None
     try:
         node = ChassisNode()
-        
-        # Use multithreaded executor
-        executor = MultiThreadedExecutor()
+        executor = SingleThreadedExecutor()
         executor.add_node(node)
         executor.spin()
-        
     except KeyboardInterrupt:
         pass
     finally:
