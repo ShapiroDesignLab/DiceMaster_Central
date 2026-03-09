@@ -6,6 +6,7 @@ Subscribes to IMU data and publishes screen orientation messages.
 import rclpy
 from rclpy.node import Node
 
+from collections import deque
 from geometry_msgs.msg import Quaternion
 from sensor_msgs.msg import Imu
 import numpy as np
@@ -21,12 +22,13 @@ from ament_index_python.packages import get_package_share_directory
 # Conditional imports for ROS message types only
 ChassisOrientation = None
 ScreenPose = None
+MotionDetection = None
 
 def _import_ros_message_deps():
     """Import ROS message dependencies if needed"""
-    global ChassisOrientation, ScreenPose
+    global ChassisOrientation, ScreenPose, MotionDetection
     try:
-        from dicemaster_central_msgs.msg import ChassisOrientation, ScreenPose
+        from dicemaster_central_msgs.msg import ChassisOrientation, ScreenPose, MotionDetection
         return True
     except ImportError as e:
         return False
@@ -99,13 +101,16 @@ class ChassisNode(Node):
                         topic_name,
                         10
                     )
+                self.motion_pub = self.create_publisher(MotionDetection, '/imu/motion', 10)
             else:
                 self.get_logger().warn('Screen orientation message dependencies not available - disabling topic publishing')
                 self.chassis_orientation_pub = None
                 self.screen_pose_publishers = {}
+                self.motion_pub = None
         else:
             self.chassis_orientation_pub = None
             self.screen_pose_publishers = {}
+            self.motion_pub = None
         # Vectorized orientation math
         _pkg_share = get_package_share_directory('dicemaster_central')
         _config_path = os.path.join(_pkg_share, 'resource', 'dice_geometry.yaml')
@@ -131,7 +136,14 @@ class ChassisNode(Node):
             self.screen_edge_rotations[screen_id] = ConfigRotation.ROTATION_0
             self.screen_edge_detection_history[screen_id] = []  # Empty history
             self.screen_edge_consecutive_count[screen_id] = 0  # No consecutive detections yet
-        
+
+        # Motion detection state (merged from standalone motion detector)
+        self._accel_magnitude_history = deque(maxlen=50)
+        self._gyro_magnitude_history = deque(maxlen=50)
+        self._shake_accel_threshold = 13.0
+        self._shake_gyro_threshold = 5.0
+        self._shake_variance_threshold = 5.0
+
         # Subscribe to IMU data (try multiple topics)
         self.imu_sub = self.create_subscription(
             Imu,
@@ -170,6 +182,12 @@ class ChassisNode(Node):
                 first_connect = True
         if first_connect:
             self.get_logger().info('IMU data connected - using live orientation')
+
+        # Motion detection: accumulate accel/gyro magnitudes
+        accel = np.array([msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z])
+        gyro = np.array([msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z])
+        self._accel_magnitude_history.append(float(np.linalg.norm(accel)))
+        self._gyro_magnitude_history.append(float(np.linalg.norm(gyro)))
 
     def _get_imu_quaternion(self) -> np.ndarray:
         """Extract the current IMU quaternion as [x, y, z, w] numpy array."""
@@ -339,6 +357,30 @@ class ChassisNode(Node):
         else:
             return self.screen_edge_rotations.get(screen_id, ConfigRotation.ROTATION_0)
             
+    def _detect_shaking(self) -> bool:
+        """Detect shaking motion based on accel/gyro magnitude variations."""
+        if len(self._accel_magnitude_history) < 20:
+            return False
+        recent_accel = list(self._accel_magnitude_history)[-20:]
+        recent_gyro = list(self._gyro_magnitude_history)[-20:]
+        accel_std = float(np.std(recent_accel))
+        gyro_mean = float(np.mean(recent_gyro))
+        return accel_std > self._shake_variance_threshold or gyro_mean > self._shake_gyro_threshold
+
+    def _get_shake_intensity(self) -> float:
+        """Calculate shake intensity (0.0 to 1.0)."""
+        if len(self._accel_magnitude_history) < 10:
+            return 0.0
+        recent_accel = list(self._accel_magnitude_history)[-10:]
+        recent_gyro = list(self._gyro_magnitude_history)[-10:]
+        accel_intensity = min(float(np.std(recent_accel)) / 10.0, 1.0)
+        gyro_intensity = min(float(np.mean(recent_gyro)) / 5.0, 1.0)
+        return (accel_intensity + gyro_intensity) / 2.0
+
+    def _get_stillness_factor(self) -> float:
+        """Calculate stillness factor (1.0 = perfectly still, 0.0 = very active)."""
+        return max(0.0, 1.0 - self._get_shake_intensity())
+
     def _publish_or_log_orientation_data(self, top_screen, bottom_screen, screen_orientations):
         """Publish orientation data to ROS topics or log to console based on configuration"""
         
@@ -367,6 +409,15 @@ class ChassisNode(Node):
                 
                 if screen_id in self.screen_pose_publishers:
                     self.screen_pose_publishers[screen_id].publish(screen_msg)
+
+            # Publish motion detection
+            if self.motion_pub is not None:
+                motion_msg = MotionDetection()
+                motion_msg.header.stamp = self.get_clock().now().to_msg()
+                motion_msg.shaking = self._detect_shaking()
+                motion_msg.shake_intensity = self._get_shake_intensity()
+                motion_msg.stillness_factor = self._get_stillness_factor()
+                self.motion_pub.publish(motion_msg)
 
         # Otherwise, just print to console
         else:
