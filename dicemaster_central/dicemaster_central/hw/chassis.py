@@ -380,35 +380,28 @@ class ChassisNode(Node):
         return modified_values
     
     def _get_all_screen_orientations(self):
-        """Get orientations for all screens based on tf frame positions"""
-        st = perf_counter()
-        # Get z positions for all screens
-        screen_positions = {}
-        for screen_config in dice_config.screen_configs.values():
-            screen_id = screen_config.id
-            z_position = self._get_screen_z_position(screen_id)
-            if z_position is not None:
-                screen_positions[screen_id] = z_position
+        """Get orientations for all screens using vectorized orientation math."""
+        imu_quat = self._get_imu_quaternion()
+        self._last_orientation_result = self._dice_orientation.compute(imu_quat)
+        result = self._last_orientation_result
 
-        if not screen_positions:
-            self.get_logger().info("No screen positions detected, cannot determine orientations")
-            return []
-            
-        # Apply stickiness factor using generic helper
-        sticky_positions = self._apply_sticky_selection(screen_positions, margin=0.01, mode='max')
-        sticky_positions = self._apply_sticky_selection(sticky_positions, margin=0.01, mode='min')
-        
-        # Build orientation data
+        face_z = result['face_z']
+
+        # Apply stickiness to face_z values (reduces jitter near ambiguous orientations)
+        sticky_z = self._apply_sticky_selection(face_z, margin=0.01, mode='max')
+        sticky_z = self._apply_sticky_selection(sticky_z, margin=0.01, mode='min')
+
+        # Build orientation data (same format as before)
         orientations = []
-        for screen_id, z_position in sticky_positions.items():
-            up_alignment = self._calculate_up_alignment(z_position)
+        for sid in sorted(sticky_z.keys()):
+            up_alignment = np.clip(sticky_z[sid] / 0.0508, -1.0, 1.0)
             orientations.append({
-                'screen_id': screen_id,
+                'screen_id': sid,
                 'up_alignment': float(up_alignment),
-                'z_position': float(screen_positions[screen_id]),  # Use original z for debug
-                'frame_name': f'screen_{screen_id}_link'
+                'z_position': float(face_z[sid]),
+                'frame_name': f'screen_{sid}_link',
             })
-        
+
         return orientations
     
     def _get_screen_edge_positions(self, screen_id):
