@@ -12,6 +12,8 @@ from std_msgs.msg import Header
 from std_srvs.srv import Empty
 
 import time
+import struct
+import math
 import numpy as np
 import threading
 import smbus2
@@ -260,115 +262,76 @@ class IMUHardwareNode(Node):
             self.get_logger().error(f"Error initializing IMU: {e}")
             self.bus = None
     
-    def _read_raw_data(self, register):
-        """Read raw 16-bit signed data from IMU register"""
-        if self.bus is None:
-            return 0
-            
-        try:
-            high = self.bus.read_byte_data(self.i2c_address, register)
-            low = self.bus.read_byte_data(self.i2c_address, register + 1)
-            value = (high << 8) + low
-            
-            # Convert to signed 16-bit
-            if value >= 32768:
-                value = value - 65536
-                
-            return value
-        except Exception as e:
-            print(f"Error reading from register 0x{register:02X}: {e}")
-            return 0
-    
+    # Precomputed scaling constants
+    _ACCEL_TO_MS2 = 9.81 / 16384.0  # ±2g range -> m/s²
+    _GYRO_TO_RADS = math.pi / (180.0 * 131.0)  # ±250°/s range -> rad/s
+
     def _poll_imu(self):
-        """Read current IMU data"""
+        """Read current IMU data using a single I2C block read"""
         if self.bus is None:
-            # Return dummy data if I2C not available
-            accel = np.array([0.0, 0.0, 9.81])
-            gyro = np.array([0.0, 0.0, 0.0])
-            return accel, gyro, 25.0
-        
+            return (0.0, 0.0, 9.81), (0.0, 0.0, 0.0), 25.0
+
         try:
-            # Read accelerometer data
-            accel_x_raw = self._read_raw_data(self.ACCEL_XOUT_H)
-            accel_y_raw = self._read_raw_data(self.ACCEL_YOUT_H)
-            accel_z_raw = self._read_raw_data(self.ACCEL_ZOUT_H)
-            
-            # Read gyroscope data
-            gyro_x_raw = self._read_raw_data(self.GYRO_XOUT_H)
-            gyro_y_raw = self._read_raw_data(self.GYRO_YOUT_H)
-            gyro_z_raw = self._read_raw_data(self.GYRO_ZOUT_H)
-            
-            # Convert to physical units
-            accel_x = accel_x_raw / self.accel_scale * 9.81  # m/s²
-            accel_y = accel_y_raw / self.accel_scale * 9.81
-            accel_z = accel_z_raw / self.accel_scale * 9.81
-            
-            gyro_x = gyro_x_raw / self.gyro_scale * np.pi / 180  # rad/s
-            gyro_y = gyro_y_raw / self.gyro_scale * np.pi / 180
-            gyro_z = gyro_z_raw / self.gyro_scale * np.pi / 180
-            
-            accel = np.array([accel_x, accel_y, accel_z])
-            gyro = np.array([gyro_x, gyro_y, gyro_z])
-            
-            # Read temperature
-            temp_raw = self._read_raw_data(self.TEMP_OUT_H)
-            temperature = temp_raw / 340.0 + 36.53  # °C
-            
+            # Single block read: registers 0x3B-0x48 (14 bytes)
+            # Layout: accel_x(2), accel_y(2), accel_z(2), temp(2), gyro_x(2), gyro_y(2), gyro_z(2)
+            data = self.bus.read_i2c_block_data(self.i2c_address, self.ACCEL_XOUT_H, 14)
+            ax, ay, az, temp_raw, gx, gy, gz = struct.unpack('>hhhhhhh', bytes(data))
+
+            k_a = self._ACCEL_TO_MS2
+            k_g = self._GYRO_TO_RADS
+            accel = (ax * k_a, ay * k_a, az * k_a)
+            gyro = (gx * k_g, gy * k_g, gz * k_g)
+            temperature = temp_raw / 340.0 + 36.53
+
             return accel, gyro, temperature
-            
+
         except Exception as e:
             self.get_logger().error(f"Error polling IMU: {e}")
-            return np.array([0.0, 0.0, 9.81]), np.array([0.0, 0.0, 0.0]), 25.0
+            return (0.0, 0.0, 9.81), (0.0, 0.0, 0.0), 25.0
     
     def timer_callback(self):
         """Main timer callback - polls IMU and publishes data"""
         # Poll IMU data
         accel, gyro, _ = self._poll_imu()  # temperature not needed here
-        
+
         with self.lock:
             # Apply calibration if available
             if self.is_calibrated:
-                accel = accel - self.acc_bias
-                gyro = gyro - self.gyro_bias
-            
+                ab = self.acc_bias
+                gb = self.gyro_bias
+                accel = (accel[0] - ab[0], accel[1] - ab[1], accel[2] - ab[2])
+                gyro = (gyro[0] - gb[0], gyro[1] - gb[1], gyro[2] - gb[2])
+
             # Handle calibration process
             if self.calibrating:
                 self._handle_calibration(accel, gyro)
-        
+
         # Publish raw IMU data (for Madgwick filter)
         self._publish_raw_imu(accel, gyro)
     
     def _publish_raw_imu(self, accel, gyro):
         """Publish raw IMU data in sensor_msgs/Imu format for Madgwick filter"""
         imu_msg = Imu()
-        
+
         # Header
-        imu_msg.header = Header()
         imu_msg.header.stamp = self.get_clock().now().to_msg()
         imu_msg.header.frame_id = "imu_link"
-        
+
         # Linear acceleration
-        imu_msg.linear_acceleration.x = float(accel[0])
-        imu_msg.linear_acceleration.y = float(accel[1])
-        imu_msg.linear_acceleration.z = float(accel[2])
-        
+        imu_msg.linear_acceleration.x = accel[0]
+        imu_msg.linear_acceleration.y = accel[1]
+        imu_msg.linear_acceleration.z = accel[2]
+
         # Angular velocity
-        imu_msg.angular_velocity.x = float(gyro[0])
-        imu_msg.angular_velocity.y = float(gyro[1])
-        imu_msg.angular_velocity.z = float(gyro[2])
-        
-        # Orientation is unknown for raw data
-        imu_msg.orientation.w = 0.0
-        imu_msg.orientation.x = 0.0
-        imu_msg.orientation.y = 0.0
-        imu_msg.orientation.z = 0.0
-        
+        imu_msg.angular_velocity.x = gyro[0]
+        imu_msg.angular_velocity.y = gyro[1]
+        imu_msg.angular_velocity.z = gyro[2]
+
         # Covariance matrices (use -1 to indicate unknown)
         imu_msg.orientation_covariance[0] = -1.0
-        imu_msg.angular_velocity_covariance[0] = 0.01  # Small variance for gyro
-        imu_msg.linear_acceleration_covariance[0] = 0.1  # Small variance for accel
-        
-        # Publish
+        imu_msg.angular_velocity_covariance[0] = 0.01
+        imu_msg.linear_acceleration_covariance[0] = 0.1
+
         self.imu_raw_pub.publish(imu_msg)
     
     def _handle_calibration(self, accel, gyro):
@@ -381,10 +344,10 @@ class IMUHardwareNode(Node):
         elapsed = time.time() - self.calib_start_time
         
         if elapsed < self.calibration_duration:
-            # Collect calibration samples
+            # Collect calibration samples (tuples are immutable, no copy needed)
             self.calib_samples.append({
-                'accel': accel.copy(),
-                'gyro': gyro.copy()
+                'accel': accel,
+                'gyro': gyro
             })
         else:
             # Calibration complete - compute biases
@@ -457,20 +420,19 @@ class IMUHardwareNode(Node):
 
 
 def main(args=None):
-    from rclpy.executors import MultiThreadedExecutor
-    
+    from rclpy.executors import SingleThreadedExecutor
+
     rclpy.init(args=args)
-    
+
     node = None
     executor = None
     try:
         node = IMUHardwareNode()
-        
-        # Use multithreaded executor
-        executor = MultiThreadedExecutor()
+
+        executor = SingleThreadedExecutor()
         executor.add_node(node)
         executor.spin()
-        
+
     except KeyboardInterrupt:
         pass
     finally:
@@ -479,6 +441,7 @@ def main(args=None):
             node.destroy_node()
         if executor is not None:
             executor.shutdown()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
