@@ -65,6 +65,7 @@ def generate_launch_description():
             'gain': LaunchConfiguration('gain'),
             'world_frame': LaunchConfiguration('world_frame'),
             'publish_tf': False,
+            'publish_rate': 20.0,
             'fixed_frame': 'world',
             'stateless': False,
             'reverse_tf': False,
