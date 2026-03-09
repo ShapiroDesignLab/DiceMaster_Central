@@ -12,6 +12,7 @@ from sensor_msgs.msg import Imu
 import tf2_ros
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 import numpy as np
+import os
 import threading
 import time
 from time import perf_counter
@@ -22,6 +23,8 @@ from time import perf_counter
 
 from dicemaster_central.constants import Rotation as ConfigRotation
 from dicemaster_central.config import dice_config
+from dicemaster_central.hw.orientation_math import DiceOrientation
+from ament_index_python.packages import get_package_share_directory
 
 # from constants_copy import Rotation as ConfigRotation
 # from config_copy import dice_config
@@ -132,7 +135,12 @@ class ChassisNode(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
-        
+
+        # Vectorized orientation math (replaces per-tick TF lookups)
+        _pkg_share = get_package_share_directory('dicemaster_central')
+        _config_path = os.path.join(_pkg_share, 'dice_geometry.yaml')
+        self._dice_orientation = DiceOrientation(_config_path)
+
         # Current robot pose - initialize with default pose rotated π around roll axis
         self.current_pose = Pose()
         self.current_pose.position.x = 0.0
@@ -213,7 +221,13 @@ class ChassisNode(Node):
         if self.get_logger().get_effective_level() <= rclpy.logging.LoggingSeverity.DEBUG:
             q = msg.orientation
             self.get_logger().debug(f'Received IMU: q=({q.w:.3f}, {q.x:.3f}, {q.y:.3f}, {q.z:.3f})')
-    
+
+    def _get_imu_quaternion(self) -> np.ndarray:
+        """Extract the current IMU quaternion as [x, y, z, w] numpy array."""
+        with self.pose_lock:
+            o = self.current_pose.orientation
+            return np.array([o.x, o.y, o.z, o.w])
+
     def timer_callback(self):
         """Timer callback for publishing transforms"""
         # Publish dynamic transforms
