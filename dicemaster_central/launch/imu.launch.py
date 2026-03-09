@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Complete IMU launch file with hardware, filter, and motion detection
+Complete IMU launch file with hardware and filter
 
-This launch file starts the complete IMU pipeline:
+This launch file starts the IMU pipeline:
 1. IMU Hardware Node - reads raw data from MPU6050, publishes to /imu/data_raw
-2. Madgwick Filter - processes raw data, publishes filtered data to /imu/data  
-3. Motion Detector Node - analyzes filtered data for motion patterns
+2. Madgwick Filter - processes raw data, publishes filtered data to /imu/data
+
+Motion detection is now handled by the chassis node.
 
 Usage:
   ros2 launch dicemaster_central imu_complete.launch.py
@@ -13,8 +14,6 @@ Usage:
 Topics:
   - /imu/data_raw - Raw IMU data from hardware
   - /imu/data - Filtered IMU data with orientation
-  - /imu/motion - Motion detection results
-  - /imu/motion/* - Individual motion flags
 """
 
 from launch import LaunchDescription
@@ -82,22 +81,15 @@ def generate_launch_description():
         }]
     )
     
-    # Motion Detector Node (commented out for now)
-    motion_detector_node = Node(
-        package='dicemaster_central',
-        executable='motion_detector.py',
-        name='motion_detector',
-    )
     print("Launching IMU")
-    
+
     return LaunchDescription([
         # Launch arguments
         use_mag_arg,
         gain_arg,
         world_frame_arg,
-        
+
         # Nodes
         imu_hardware_node,
         imu_filter_node,
-        motion_detector_node,  # Uncomment when motion detector is ready
     ])
