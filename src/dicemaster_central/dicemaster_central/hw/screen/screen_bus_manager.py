@@ -6,9 +6,9 @@ U-M Shapiro Design Lab
 Daniel Hou @2024
 """
 
+import itertools
 import threading
 import time
-from time import perf_counter
 from queue import Empty, PriorityQueue
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
@@ -24,19 +24,21 @@ from dicemaster_central.constants import MessagePriority
 from dicemaster_central.media_typing.protocol import ProtocolMessage
 
 
+_sequence_counter = itertools.count()
+
+
 @dataclass
 class QueuedMessage:
     """Message in the transmission queue"""
     screen_id: int
     message: ProtocolMessage
     priority: int = 5  # Lower number = higher priority
-    timestamp: float = field(default_factory=time.time)
-    
+    sequence: int = field(default_factory=lambda: next(_sequence_counter))
+
     def __lt__(self, other):
-        # For priority queue sorting
         if self.priority != other.priority:
             return self.priority < other.priority
-        return self.timestamp < other.timestamp
+        return self.sequence < other.sequence
 
 class ScreenBusManager(Node):
     """
