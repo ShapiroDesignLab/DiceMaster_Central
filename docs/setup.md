@@ -10,7 +10,7 @@
 ```bash
 sudo apt update && sudo apt upgrade -y && sudo apt install -y git
 ```
-4. Configure SPI and I2C interfaces — see `src/dicemaster_central/docs/user_guides/rpi_hw_config.md`
+4. Configure SPI and I2C interfaces — see `docs/user_guides/rpi_hw_config.md`
 
 ## Install ROS2 Humble
 
@@ -42,4 +42,4 @@ pip install -e . --break-system-packages
 
 ## Configure Auto-Start
 
-See `src/dicemaster_central/docs/configure/auto_start.readme.md`
+See `docs/configure/auto_start.readme.md`
