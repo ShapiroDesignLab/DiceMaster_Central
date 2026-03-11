@@ -300,11 +300,9 @@ class Screen:
             # Get current frame messages
             current_frame_messages = self.gif_messages[self.gif_frame_index]
             
-            # Update rotation for current frame if rotation is enabled
-            # Only the first message (ImageStartMessage) has rotation
-            # if current_frame_messages and hasattr(current_frame_messages[0], 'rotation'):
-            #     current_frame_messages[0].rotation = self.current_rotation
+            # Update rotation and re-encode so the SPI payload reflects the change
             current_frame_messages[0].rotation = self.gif_rotation
+            current_frame_messages[0].encode()
             
             # Push frame to bus manager
             self.push_to_bus_manager(current_frame_messages, MessagePriority.HIGH)
@@ -332,16 +330,18 @@ class Screen:
             
         try:
             if self.last_content_type == ContentType.TEXT:
-                # For text messages, update rotation and resend
+                # For text messages, update rotation, re-encode payload, and resend
                 if hasattr(self.last_content, 'rotation'):
                     self.last_content.rotation = self.current_rotation
+                    self.last_content.encode()
                     self.push_to_bus_manager(self.last_content, MessagePriority.HIGH)
             elif self.last_content_type == ContentType.IMAGE:
                 # For image messages, only the start message has rotation
                 if isinstance(self.last_content, list) and len(self.last_content) > 0:
-                    start_msg = self.last_content[0]  # First message should be ImageStartMessage
+                    start_msg = self.last_content[0]
                     if hasattr(start_msg, 'rotation'):
                         start_msg.rotation = self.current_rotation
+                        start_msg.encode()
                     self.push_to_bus_manager(self.last_content, MessagePriority.HIGH)
             # elif self.last_content_type == ContentType.GIF:
             #     # For GIF, update rotation in all frame start messages and restart playback
