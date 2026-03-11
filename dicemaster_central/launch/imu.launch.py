@@ -43,14 +43,16 @@ def generate_launch_description():
         description='World frame orientation (enu, ned, nwu)'
     )
     
-    # IMU Hardware Node
+    # IMU Hardware Node (C++)
     imu_hardware_node = Node(
-        package='dicemaster_central',
-        executable='imu_hardware.py',
-        name='imu_hardware',
+        package='dicemaster_cpp',
+        executable='imu_hardware_cpp',
+        name='imu_hardware_cpp',
         output='screen',
         parameters=[{
-            # Parameters loaded from dice_config automatically
+            'i2c_bus': 6,
+            'i2c_address': 0x68,
+            'polling_rate': 50.0,
         }]
     )
     

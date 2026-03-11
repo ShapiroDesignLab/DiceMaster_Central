@@ -94,10 +94,31 @@ but that was already negligible for local-only communication. The bottleneck is
 the rclpy executor/callback overhead and DDS serialization layer, not the
 transport. Stick with default FastRTPS to avoid RouDi operational complexity.
 
+## C++ Rewrite
+
+Rewrote imu_hardware and chassis nodes in C++ (`dicemaster_cpp` package). The Python nodes are preserved but the launch files now use the C++ versions.
+
+**Files:**
+- `dicemaster_cpp/src/imu_hardware_node.cpp` — C++ IMU node with I2C_RDWR ioctl, simulate mode for benchmarking without hardware
+- `dicemaster_cpp/src/chassis_node.cpp` — C++ chassis with orientation, motion detection, edge rotation
+- `dicemaster_cpp/src/dice_orientation.cpp` — Full port of orientation_math.py using Eigen
+- `dicemaster_cpp/include/dicemaster_cpp/dice_orientation.hpp` — Header
+
+**Benchmark at 50Hz (simulate mode, no physical IMU):**
+
+| Process | Python (optimized) | C++ | Change |
+|---------|-------------------|-----|--------|
+| imu_hardware | ~20% | 4.5% | **-15.5%** |
+| imu_filter_madgwick | ~17% | 7.0% | **-10%** |
+| chassis | ~20% | 6.4% | **-13.6%** |
+| **Total** | **~57%** | **~18%** | **-39%** |
+
+The C++ pipeline uses **~18% of one core** at 50Hz, down from the original Python baseline of ~102%. That's a **5.7x total reduction**.
+
+The IMU node has a `simulate` parameter that auto-enables when no MPU6050 is detected (or can be set explicitly with `simulate:=true`). This generates synthetic IMU data with realistic noise so the full pipeline can be benchmarked without hardware.
+
 ## Future Optimization Opportunities
 
 1. **Fork imu_tools** — Track the publish_rate patch in git properly
-2. **Composable nodes** — Load Madgwick filter as a component node (already supports `RCLCPP_COMPONENTS_REGISTER_NODE`). Eliminates inter-process DDS for filter consumers
-3. **C++ IMU hardware node** — Rewrite as composable node, load in same container as Madgwick with `use_intra_process_comms: true`. Would eliminate the 50Hz DDS hop between IMU and filter entirely
-4. **Single C++ node** — Read I2C + run Madgwick internally + publish only filtered output. Entire pipeline under 5% CPU
-5. **Microcontroller offload** — ESP32/Pi Pico runs IMU read + Madgwick, sends filtered data over UART to Pi at low rate. Pipeline essentially free on Pi
+2. **Composable nodes** — Load Madgwick filter + imu_hardware_cpp + chassis_cpp as component nodes in a single process with `use_intra_process_comms: true`. Would eliminate all inter-process DDS hops. Estimated total: <5% CPU
+3. **Microcontroller offload** — ESP32/Pi Pico runs IMU read + Madgwick, sends filtered data over UART to Pi at low rate. Pipeline essentially free on Pi
