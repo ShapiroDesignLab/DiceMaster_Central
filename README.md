@@ -28,13 +28,11 @@ echo 'source /home/dice/ros2_humble/install/setup.bash' >> ~/.bashrc
 ```
 
 6.  Get the DiceMaster_Central package from github and compile.
-- You may want to use the DiceMaster_ROS_Workspace for some convenient ROS environment setup and packaging. 
+DiceMaster_Central is a self-contained colcon workspace — packages live in `src/`, build artifacts go to `build/`/`install/`/`log/` (gitignored).
 ```bash
 git clone git@github.com:ShapiroDesignLab/DiceMaster.git --recursive
-cd DiceMaster/DiceMaster_ROS_Workspace
-mkdir -p src && ln -s ../DiceMaster_Central .
-source prepare.sh
-colcon build --symlink-install
+cd DiceMaster/DiceMaster_Central
+./scripts/setup_workspace.sh
 ```
 
 7. Download, compile, and install a [custom py-spidev](https://forums.raspberrypi.com/viewtopic.php?t=124472) for extnded SPI buffer support. 

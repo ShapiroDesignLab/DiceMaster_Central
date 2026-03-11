@@ -33,11 +33,11 @@ Set `publish_tf: False` in `imu.launch.py`. The Madgwick filter was broadcasting
 
 Patched `imu_filter_madgwick` to add a `publish_rate` parameter. When set (e.g., `20.0`), the filter still updates its internal state on every incoming IMU message (50Hz) for accuracy, but only publishes the filtered output at the configured rate. Set to 20Hz — a dice doesn't need 50Hz orientation updates.
 
-**Files modified (C++ patch, not yet tracked in git — needs imu_tools fork):**
-- `deps/imu_tools/imu_filter_madgwick/src/imu_filter_ros.cpp` — time-gated `shouldPublish()` method
-- `deps/imu_tools/imu_filter_madgwick/include/imu_filter_madgwick/imu_filter_ros.h` — added `publish_rate_` and `last_publish_time_` members
+**Status:** This patch was applied locally but has been reverted in favor of
+the C++ rewrite which made the savings negligible. The upstream imu_tools
+submodule (at `src/imu_tools`) is used unmodified.
 
-**Savings:** Chassis subscription drops from 50Hz to 20Hz DDS overhead
+**Savings (when active):** Chassis subscription drops from 50Hz to 20Hz DDS overhead
 
 ### 4. IMU Hardware Node Optimization (commit 94990b4)
 

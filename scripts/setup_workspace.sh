@@ -1,20 +1,17 @@
 #!/bin/bash
-# setup_workspace.sh — Set up the ROS2 workspace for DiceMaster Central.
+# setup_workspace.sh — Build the DiceMaster Central colcon workspace.
 #
-# Creates ros_ws/src/ with symlinks to all packages, installs rosdep
-# dependencies, and runs colcon build. Idempotent — safe to re-run.
+# The repo root IS the workspace; packages live in src/.
 #
 # Usage:
-#   ./scripts/setup_workspace.sh          # full setup + build
-#   ./scripts/setup_workspace.sh --no-build   # setup only, skip build
-#   source ./scripts/setup_workspace.sh   # setup + source into current shell
+#   ./scripts/setup_workspace.sh              # rosdep + build
+#   ./scripts/setup_workspace.sh --no-build   # rosdep only, skip build
+#   source ./scripts/setup_workspace.sh       # build + source into current shell
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-WS_DIR="$REPO_ROOT/ros_ws"
-SRC_DIR="$WS_DIR/src"
 
 # ---------------------------------------------------------------------------
 # Detect ROS2 installation
@@ -40,43 +37,19 @@ echo "Using ROS2 from: $ROS_SETUP"
 source "$ROS_SETUP"
 
 # ---------------------------------------------------------------------------
-# Create workspace src/ symlinks
+# Ensure submodules are initialized
 # ---------------------------------------------------------------------------
-mkdir -p "$SRC_DIR"
-
-# Link our own packages
-for pkg in dicemaster_central dicemaster_central_msgs dicemaster_cpp; do
-    target="$REPO_ROOT/$pkg"
-    link="$SRC_DIR/$pkg"
-    if [ ! -e "$link" ]; then
-        ln -sf "$target" "$link"
-        echo "Linked: $link -> $target"
-    fi
-done
-
-# Link external dependencies (imu_tools submodule)
-DEPS_DIR="$REPO_ROOT/deps"
-if [ -d "$DEPS_DIR/imu_tools" ]; then
-    link="$SRC_DIR/imu_tools"
-    if [ ! -e "$link" ]; then
-        ln -sf "$DEPS_DIR/imu_tools" "$link"
-        echo "Linked: $link -> $DEPS_DIR/imu_tools"
-    fi
-else
-    echo "WARNING: deps/imu_tools not found. Run: git submodule update --init --recursive"
+if [ ! -f "$REPO_ROOT/src/imu_tools/package.xml" ]; then
+    echo "Initializing git submodules..."
+    git -C "$REPO_ROOT" submodule update --init --recursive
 fi
-
-# ---------------------------------------------------------------------------
-# Set colcon defaults
-# ---------------------------------------------------------------------------
-export COLCON_DEFAULTS_FILE="$WS_DIR/colcon.defaults.json"
 
 # ---------------------------------------------------------------------------
 # Install rosdep dependencies
 # ---------------------------------------------------------------------------
 if command -v rosdep &>/dev/null; then
     echo "Installing rosdep dependencies..."
-    rosdep install --from-paths "$SRC_DIR" --ignore-src -y 2>/dev/null || true
+    rosdep install --from-paths "$REPO_ROOT/src" --ignore-src -y 2>/dev/null || true
 fi
 
 # ---------------------------------------------------------------------------
@@ -84,7 +57,7 @@ fi
 # ---------------------------------------------------------------------------
 if [[ "$1" != "--no-build" ]]; then
     echo "Building workspace..."
-    cd "$WS_DIR"
+    cd "$REPO_ROOT"
     colcon build
     echo ""
     echo "Build complete."
@@ -93,12 +66,12 @@ fi
 # ---------------------------------------------------------------------------
 # Source the workspace (if this script was sourced, not executed)
 # ---------------------------------------------------------------------------
-if [ -f "$WS_DIR/install/setup.bash" ]; then
-    source "$WS_DIR/install/setup.bash"
-    echo "Workspace sourced: $WS_DIR/install/setup.bash"
+if [ -f "$REPO_ROOT/install/setup.bash" ]; then
+    source "$REPO_ROOT/install/setup.bash"
+    echo "Workspace sourced: $REPO_ROOT/install/setup.bash"
 fi
 
 echo ""
 echo "Done. To use this workspace in a new shell:"
 echo "  source $ROS_SETUP"
-echo "  source $WS_DIR/install/setup.bash"
+echo "  source $REPO_ROOT/install/setup.bash"

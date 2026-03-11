@@ -3,11 +3,10 @@
 **.pyc
 *_copy.py
 
-# ROS workspace build artifacts
-ros_ws/build/
-ros_ws/install/
-ros_ws/log/
-ros_ws/src/
+# Colcon workspace build artifacts (repo root is the workspace)
+build/
+install/
+log/
 
 # IDE
 .vscode/
