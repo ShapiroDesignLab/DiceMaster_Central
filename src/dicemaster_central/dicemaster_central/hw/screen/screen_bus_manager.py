@@ -167,11 +167,6 @@ class ScreenBusManager(Node):
                 # Get next message with timeout
                 queued_msg = self.message_queue.get(timeout=1.0)
 
-                screen_id = queued_msg.screen_id
-                if screen_id not in self.screen_configs.keys():
-                    self.get_logger().warn(f"Invalid screen ID {screen_id} for bus {self.bus_id}")
-                    self.stats['messages_failed'] += 1
-
                 # Send and log
                 self.spi_device.send(queued_msg.message.payload)
                 self.stats['messages_sent'] += 1
