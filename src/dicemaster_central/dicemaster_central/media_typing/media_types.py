@@ -495,38 +495,57 @@ class GIF(Media):
         }
     
     def to_msg(self, **kwargs) -> List[List[Union[ImageStartMessage, ImageChunkMessage]]]:
-        """Return a list of Image.to_msg() lists for each frame with DMA-aware chunking and embedded chunk 0"""
+        """Return a list of protocol message lists for each frame, built from already-loaded frames_data"""
+        from .protocol import calculate_effective_chunk_size, calculate_effective_chunk_size_for_image_start
+
         rotation = kwargs.get('rotation', Rotation.ROTATION_0)
         screen_id = kwargs.get('screen_id', 0)
-        spi_chunk_size = kwargs.get('chunk_size', 8192)  # Updated to 8KB
-        
+        spi_chunk_size = kwargs.get('chunk_size', 8192)
+
         if not self.frames_data:
             raise ValueError("No frames loaded")
-        
+
+        regular_chunk_size = calculate_effective_chunk_size(spi_chunk_size)
+        embedded_chunk_size = calculate_effective_chunk_size_for_image_start(spi_chunk_size)
+
         frame_messages = []
-        
-        # Get the sorted frame files from the directory
-        frame_files = []
-        for frame_file in os.listdir(self.file_path):
-            if frame_file.endswith(".jpg"):
-                frame_files.append(frame_file)
-        
-        # Sort numerically (0.jpg, 1.jpg, ..., k.jpg)
-        frame_files.sort(key=lambda x: int(x.split('.')[0]))
-        
-        # Create an Image object for each frame using existing files
-        for frame_index, frame_file in enumerate(frame_files):
-            frame_path = os.path.join(self.file_path, frame_file)
-            
-            # Create Image object for this frame using the existing file
-            frame_image = Image(
-                file_path=frame_path,
+
+        for frame_index, frame_data in enumerate(self.frames_data):
+            chunk_0_data = frame_data[:embedded_chunk_size]
+            remaining_data_size = len(frame_data) - len(chunk_0_data)
+            remaining_chunks = (remaining_data_size + regular_chunk_size - 1) // regular_chunk_size if remaining_data_size > 0 else 0
+            total_chunks = 1 + remaining_chunks
+
+            messages = []
+
+            start_message = ImageStartMessage(
+                screen_id=screen_id,
                 image_id=frame_index,
-                delay_time=self.delay_time
+                image_format=self.image_format,
+                resolution=self.resolution,
+                delay_time=self.delay_time,
+                total_size=len(frame_data),
+                num_chunks=total_chunks,
+                chunk_0_data=chunk_0_data,
+                rotation=rotation
             )
-            
-            # Get the protocol messages for this frame - effective chunk size is calculated inside to_msg
-            messages = frame_image.to_msg(rotation=rotation, chunk_size=spi_chunk_size, screen_id=screen_id)
+            messages.append(start_message)
+
+            chunk_id = 1
+            start_location = len(chunk_0_data)
+            for i in range(len(chunk_0_data), len(frame_data), regular_chunk_size):
+                chunk_data = frame_data[i:i + regular_chunk_size]
+                chunk_message = ImageChunkMessage(
+                    screen_id=screen_id,
+                    image_id=frame_index,
+                    chunk_id=chunk_id,
+                    start_location=start_location,
+                    chunk_data=chunk_data
+                )
+                messages.append(chunk_message)
+                chunk_id += 1
+                start_location += len(chunk_data)
+
             frame_messages.append(messages)
-        
+
         return frame_messages
