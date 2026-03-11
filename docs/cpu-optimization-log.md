@@ -76,6 +76,24 @@ Other findings:
 - QoS BEST_EFFORT depth=1: saves ~4% vs RELIABLE depth=10
 - ROS_LOCALHOST_ONLY: no significant savings
 
+## Transport Layer Benchmark: CycloneDDS + iceoryx Shared Memory
+
+Tested CycloneDDS with iceoryx shared memory transport vs default FastRTPS.
+Iceoryx requires a RouDi daemon process and `CYCLONEDDS_URI` config with
+`<SharedMemory><Enable>true</Enable></SharedMemory>`.
+
+| Process | FastRTPS | CycloneDDS + SHM | Diff |
+|---------|----------|-------------------|------|
+| imu_hardware.py | 25.3% | 26.0% | +0.7% |
+| imu_filter_madgwick | 6.6% | 5.5% | -1.1% |
+| chassis.py | 26.9% | 26.1% | -0.8% |
+| **Total** | **58.8%** | **57.6%** | **-1.2%** |
+
+**Verdict: No meaningful difference.** Shared memory eliminates network copying
+but that was already negligible for local-only communication. The bottleneck is
+the rclpy executor/callback overhead and DDS serialization layer, not the
+transport. Stick with default FastRTPS to avoid RouDi operational complexity.
+
 ## Future Optimization Opportunities
 
 1. **Fork imu_tools** — Track the publish_rate patch in git properly
