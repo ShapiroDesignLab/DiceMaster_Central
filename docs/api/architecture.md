@@ -9,6 +9,7 @@ For operational details, see the linked references.
 3. [ROS2 Node Architecture](#ros2-node-architecture)
 4. [Message Flow](#message-flow)
 5. [Configuration System](#configuration-system)
+6. [References](#references)
 
 ---
 
@@ -298,20 +299,14 @@ Key configuration classes:
 **To change screen assignments**:
 1. Edit `dice_config.screen_configs` in `config.py`
 2. Update `bus_id` for each screen
-3. Rebuild: `colcon build --symlink-install`
-4. Restart system
 
 **To add a new SPI bus**:
-1. Add to `bus_configs`:
-   ```python
-   4: SPIBusConfig(bus_id=4)
-   ```
-2. Add bus ID to `active_spi_controllers`
-3. Assign screens to new bus in `screen_configs`
+1. Add a new entry to `bus_configs` with the new bus ID
+2. Add the bus ID to `active_spi_controllers`
+3. Assign screens to the new bus in `screen_configs`
 
 **To change default game**:
 1. Edit `GameConfig.default_game` in `config.py`
-2. Rebuild and restart
 
 ---
 
@@ -325,5 +320,6 @@ Key configuration classes:
 | Testing & debugging | `docs/setup/dev_setup.md` |
 | Screen display API | `docs/api/display_media.md` |
 | IMU API | `docs/api/motion_detection.md` |
-| Creating games & strategies | `docs/creator/game.md`, `docs/creator/strategy.md` |
+| `docs/creator/game.md` | How to create a new game |
+| `docs/creator/strategy.md` | How to create a new strategy |
 | Protocol source | `src/dicemaster_central/dicemaster_central/media_typing/protocol.py` |
