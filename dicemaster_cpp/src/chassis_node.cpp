@@ -5,6 +5,7 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <dicemaster_central_msgs/msg/chassis_orientation.hpp>
 #include <dicemaster_central_msgs/msg/screen_pose.hpp>
@@ -269,9 +270,6 @@ private:
         return (accel_i + gyro_i) / 2.0;
     }
 };
-
-// Need this for ament_index
-#include <ament_index_cpp/get_package_share_directory.hpp>
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
