@@ -45,7 +45,7 @@ source "$ROS_SETUP"
 mkdir -p "$SRC_DIR"
 
 # Link our own packages
-for pkg in dicemaster_central dicemaster_central_msgs; do
+for pkg in dicemaster_central dicemaster_central_msgs dicemaster_cpp; do
     target="$REPO_ROOT/$pkg"
     link="$SRC_DIR/$pkg"
     if [ ! -e "$link" ]; then
