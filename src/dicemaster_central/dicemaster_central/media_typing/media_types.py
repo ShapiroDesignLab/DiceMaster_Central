@@ -1,6 +1,6 @@
+import io
 import json
 import os
-import tempfile
 from abc import ABC, abstractmethod
 from typing import List, Optional, Any, Union, Tuple
 from pydantic import BaseModel, Field, validator
@@ -434,33 +434,23 @@ class GIF(Media):
         """Validate format and resolution of frames using the first frame"""
         if not self.frames_data:
             return
-            
-        # Create a temporary file to analyze the first frame
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-            temp_file.write(self.frames_data[0])
-            temp_path = temp_file.name
-        
-        try:
-            from PIL import Image as PILImage
-            img = PILImage.open(temp_path)
-            
-            # Validate format
-            if img.format != 'JPEG':
-                raise ValueError(f"All frames must be JPEG format, found: {img.format}")
-            
-            self.image_format = ImageFormat.JPEG
-            
-            # Validate and set resolution
-            dimensions = img.size
-            if dimensions == (480, 480):
-                self.resolution = ImageResolution.SQ480
-            elif dimensions == (240, 240):
-                self.resolution = ImageResolution.SQ240
-            else:
-                raise ValueError(f"Unsupported frame dimensions: {dimensions}. "
-                               f"Must be 480x480, 240x240")
-        finally:
-            os.unlink(temp_path)
+
+        from PIL import Image as PILImage
+        img = PILImage.open(io.BytesIO(self.frames_data[0]))
+
+        if img.format != 'JPEG':
+            raise ValueError(f"All frames must be JPEG format, found: {img.format}")
+
+        self.image_format = ImageFormat.JPEG
+
+        dimensions = img.size
+        if dimensions == (480, 480):
+            self.resolution = ImageResolution.SQ480
+        elif dimensions == (240, 240):
+            self.resolution = ImageResolution.SQ240
+        else:
+            raise ValueError(f"Unsupported frame dimensions: {dimensions}. "
+                           f"Must be 480x480, 240x240")
     
     def frames(self):
         """Iterator for frames"""
