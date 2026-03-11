@@ -8,6 +8,36 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
+#include <linux/i2c.h>
+
+// SMBus-compatible I2C helpers using ioctl
+static int i2c_smbus_write_byte_data(int fd, uint8_t reg, uint8_t val) {
+    union i2c_smbus_data data;
+    data.byte = val;
+    struct i2c_smbus_ioctl_data args = {
+        .read_write = I2C_SMBUS_WRITE,
+        .command = reg,
+        .size = I2C_SMBUS_BYTE_DATA,
+        .data = &data
+    };
+    return ioctl(fd, I2C_SMBUS, &args);
+}
+
+static int i2c_smbus_read_i2c_block_data(int fd, uint8_t reg, uint8_t len, uint8_t* buf) {
+    union i2c_smbus_data data;
+    data.block[0] = len;
+    struct i2c_smbus_ioctl_data args = {
+        .read_write = I2C_SMBUS_READ,
+        .command = reg,
+        .size = I2C_SMBUS_I2C_BLOCK_DATA,
+        .data = &data
+    };
+    int ret = ioctl(fd, I2C_SMBUS, &args);
+    if (ret >= 0) {
+        memcpy(buf, data.block + 1, len);
+    }
+    return ret;
+}
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -93,8 +123,7 @@ private:
     }
 
     void write_reg(uint8_t reg, uint8_t val) {
-        uint8_t buf[2] = {reg, val};
-        if (write(i2c_fd_, buf, 2) != 2) {
+        if (i2c_smbus_write_byte_data(i2c_fd_, reg, val) < 0) {
             RCLCPP_WARN(get_logger(), "I2C write failed for reg 0x%02X", reg);
         }
     }
@@ -137,10 +166,9 @@ private:
             return;
         }
 
-        // Block read 14 bytes from ACCEL_XOUT_H
-        uint8_t reg = ACCEL_XOUT_H;
+        // Block read 14 bytes from ACCEL_XOUT_H using SMBus ioctl
         uint8_t buf[14];
-        if (write(i2c_fd_, &reg, 1) != 1 || read(i2c_fd_, buf, 14) != 14) {
+        if (i2c_smbus_read_i2c_block_data(i2c_fd_, ACCEL_XOUT_H, 14, buf) < 0) {
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "I2C read failed");
             publish_dummy();
             return;
