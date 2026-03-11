@@ -8,6 +8,12 @@ build/
 install/
 log/
 
+# Plans (local only)
+**/plans/
+
+# RViz rosbag data
+rviz/data/
+
 # IDE
 .vscode/
 
