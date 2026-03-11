@@ -8,6 +8,9 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument('simulate', default_value='false',
+                              description='Use synthetic IMU data (no hardware needed)'),
+
         # C++ IMU hardware node
         Node(
             package='dicemaster_cpp',
@@ -18,6 +21,7 @@ def generate_launch_description():
                 'i2c_bus': 6,
                 'i2c_address': 0x68,
                 'polling_rate': 50.0,
+                'simulate': LaunchConfiguration('simulate'),
             }]
         ),
 
