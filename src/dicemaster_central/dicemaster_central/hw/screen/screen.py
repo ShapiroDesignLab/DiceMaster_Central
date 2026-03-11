@@ -304,8 +304,9 @@ class Screen:
             current_frame_messages[0].rotation = self.gif_rotation
             current_frame_messages[0].encode()
             
-            # Push frame to bus manager
-            self.push_to_bus_manager(current_frame_messages, MessagePriority.HIGH)
+            # Push frame to bus manager at NORMAL priority so interactive
+            # text/image updates (HIGH) are not blocked by continuous GIF traffic
+            self.push_to_bus_manager(current_frame_messages, MessagePriority.NORMAL)
             
             # Advance to next frame
             self.gif_frame_index = (self.gif_frame_index + 1) % len(self.gif_messages)
