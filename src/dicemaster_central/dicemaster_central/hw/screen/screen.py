@@ -68,21 +68,23 @@ class Screen:
                 f"Screen {self.screen_id} process_media error: {e}"
             )
 
-    def current_msgs(self) -> Optional[Any]:
-        """Return encoded messages for current TEXT or IMAGE content. None for GIF."""
-        if self._last_content_type in (ContentType.TEXT, ContentType.IMAGE):
-            return self._last_content
+    def current_msgs(self) -> Optional[List]:
+        """Return encoded messages for current TEXT or IMAGE content as a list. None for GIF."""
+        if self._last_content_type == ContentType.TEXT:
+            return [self._last_content]
+        elif self._last_content_type == ContentType.IMAGE:
+            return self._last_content  # already a list
         return None
 
-    def resend_with_rotation(self) -> Optional[Any]:
-        """Re-encode last static content with current_rotation. Returns messages."""
+    def resend_with_rotation(self) -> Optional[List]:
+        """Re-encode last static content with current_rotation. Returns list of messages."""
         if self._last_content is None:
             return None
         try:
             if self._last_content_type == ContentType.TEXT:
                 self._last_content.rotation = self.current_rotation
                 self._last_content.encode()
-                return self._last_content
+                return [self._last_content]
             elif self._last_content_type == ContentType.IMAGE:
                 msgs = self._last_content
                 if msgs:

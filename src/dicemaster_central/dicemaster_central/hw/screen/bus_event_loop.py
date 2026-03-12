@@ -79,13 +79,14 @@ class BusEventLoop:
         self._thread.start()
 
     def stop(self) -> None:
+        if self._thread is None:
+            return
         self.enqueue(Event(type=EventType.SHUTDOWN, screen_id=0))
-        if self._thread:
-            self._thread.join(timeout=3.0)
-            if self._thread.is_alive():
-                self.logger.error(
-                    f"BusEventLoop bus {self.bus_id}: thread did not stop within 3s"
-                )
+        self._thread.join(timeout=3.0)
+        if self._thread.is_alive():
+            self.logger.error(
+                f"BusEventLoop bus {self.bus_id}: thread did not stop within 3s"
+            )
 
     # ------------------------------------------------------------------
     # Event loop (bus thread only)
@@ -144,6 +145,8 @@ class BusEventLoop:
         msgs = screen.current_msgs()
         if msgs:
             self._rate_limited_send(msgs)
+        # GIF: current_msgs() returns None; first frame fires in the GIF
+        # advancement block at the bottom of _run on this same iteration.
 
     def _handle_rotation(self, ev: Event) -> None:
         screen = self.screens.get(ev.screen_id)
@@ -169,13 +172,11 @@ class BusEventLoop:
     # SPI send with rate limiter (bus thread only)
     # ------------------------------------------------------------------
 
-    def _rate_limited_send(self, msgs) -> None:
+    def _rate_limited_send(self, msgs: List) -> None:
         now = time.monotonic()
         gap = now - self._last_send_time
         if gap < self.bus_min_interval_s:
             time.sleep(self.bus_min_interval_s - gap)
-        if not isinstance(msgs, list):
-            msgs = [msgs]
         for msg in msgs:
             self.spi.send(msg.payload)
         self._last_send_time = time.monotonic()

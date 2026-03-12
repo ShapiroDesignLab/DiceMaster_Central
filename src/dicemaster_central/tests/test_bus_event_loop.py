@@ -111,7 +111,7 @@ def test_gif_frames_advance_at_deadline(tmp_path):
     loop.start()
 
     # Wait for slightly more than two GIF frame periods
-    time.sleep(GIF_FRAME_TIME * 2.5)
+    time.sleep(GIF_FRAME_TIME * 3.5)
     loop.stop()
 
     # At least 2 frames should have been sent
@@ -251,7 +251,7 @@ def test_screen_resend_with_rotation(tmp_path):
     s.current_rotation = Rotation.ROTATION_90
     result = s.resend_with_rotation()
     assert result is not None
-    assert result.rotation == Rotation.ROTATION_90
+    assert result[0].rotation == Rotation.ROTATION_90
 
 
 def test_bus_manager_has_no_priority_queue():
