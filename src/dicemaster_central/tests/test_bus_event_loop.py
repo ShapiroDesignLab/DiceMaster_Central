@@ -52,7 +52,6 @@ def test_shutdown_stops_loop():
 # Screen tests
 # ---------------------------------------------------------------------------
 
-from unittest.mock import MagicMock, patch
 from dicemaster_central.constants import ContentType, Rotation
 
 

@@ -89,6 +89,11 @@ class Screen:
                     msgs[0].rotation = self.current_rotation
                     msgs[0].encode()
                 return msgs
+            else:
+                self.node.get_logger().warn(
+                    f"Screen {self.screen_id} resend_with_rotation called with "
+                    f"unexpected content type: {self._last_content_type}"
+                )
         except Exception as e:
             self.node.get_logger().error(
                 f"Screen {self.screen_id} resend_with_rotation error: {e}"
@@ -136,6 +141,8 @@ class Screen:
         gif = GIF(file_path=request.file_path, delay_time=int(GIF_FRAME_TIME * 1000))
         if not gif.frames_data:
             self.node.get_logger().error(f"No GIF frames in {request.file_path}")
+            self._last_content = None
+            self._last_content_type = None
             return
         self.gif_messages = gif.to_msg(
             rotation=self.current_rotation,
