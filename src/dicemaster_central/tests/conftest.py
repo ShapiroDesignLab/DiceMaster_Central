@@ -24,3 +24,20 @@ if 'dicemaster_central' not in sys.modules:
     _pkg.__package__ = 'dicemaster_central'
     _pkg.__spec__ = None
     sys.modules['dicemaster_central'] = _pkg
+
+# Stub hw and hw.screen subpackages so that importing bus_event_loop (and other
+# hw.screen modules) does NOT execute the real __init__.py files, which chain
+# into pydantic/rclpy unavailable on macOS.
+_hw_dir = os.path.join(_pkg_dir, 'hw')
+_hw_screen_dir = os.path.join(_hw_dir, 'screen')
+
+for _mod_name, _mod_dir in [
+    ('dicemaster_central.hw', _hw_dir),
+    ('dicemaster_central.hw.screen', _hw_screen_dir),
+]:
+    if _mod_name not in sys.modules:
+        _mod = types.ModuleType(_mod_name)
+        _mod.__path__ = [_mod_dir]
+        _mod.__package__ = _mod_name
+        _mod.__spec__ = None
+        sys.modules[_mod_name] = _mod
