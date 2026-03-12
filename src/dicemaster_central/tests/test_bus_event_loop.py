@@ -137,3 +137,13 @@ def test_screen_resend_with_rotation(tmp_path):
     result = s.resend_with_rotation()
     assert result is not None
     assert result.rotation == Rotation.ROTATION_90
+
+
+def test_bus_manager_has_no_priority_queue():
+    """ScreenBusManager should not have a PriorityQueue or transmission_thread."""
+    import inspect
+    from dicemaster_central.hw.screen import screen_bus_manager as sbm
+    src = inspect.getsource(sbm)
+    assert 'PriorityQueue' not in src, "PriorityQueue should be removed"
+    assert 'transmission_thread' not in src, "transmission_thread should be removed"
+    assert 'BusEventLoop' in src, "BusEventLoop should be used"

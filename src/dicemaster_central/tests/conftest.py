@@ -10,8 +10,27 @@ from unittest.mock import MagicMock
 # trigger dicemaster_central.__init__
 for mod in ['rclpy', 'rclpy.node', 'rclpy.action', 'rclpy.executors',
             'rclpy.qos', 'rclpy.parameter', 'rclpy.callback_groups',
-            'dicemaster_central_msgs', 'dicemaster_central_msgs.msg']:
+            'dicemaster_central_msgs', 'dicemaster_central_msgs.msg',
+            'spidev']:
     sys.modules.setdefault(mod, MagicMock())
+
+# Ensure rclpy.node.Node is a real class so ScreenBusManager can subclass it
+import rclpy.node as _rclpy_node
+if not isinstance(getattr(_rclpy_node, 'Node', None), type):
+    class _StubNode:
+        def __init__(self, *args, **kwargs): pass
+        def get_logger(self): return MagicMock()
+        def create_subscription(self, *args, **kwargs): return MagicMock()
+        def destroy_node(self): pass
+    _rclpy_node.Node = _StubNode
+
+# Ensure ScreenPose stub has screen_id and rotation attributes
+import dicemaster_central_msgs.msg as _msgs
+if not isinstance(getattr(_msgs, 'ScreenPose', None), type):
+    class _ScreenPose:
+        screen_id: int = 0
+        rotation: int = 0
+    _msgs.ScreenPose = _ScreenPose
 
 # Pre-register the dicemaster_central package as a lightweight stub so that
 # Python does NOT execute __init__.py (which would pull in hw/pydantic/etc.).
