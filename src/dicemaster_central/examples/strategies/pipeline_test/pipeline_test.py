@@ -1,94 +1,61 @@
 """
-An example base strategy that selects screen IDs in order and prints a notification to them every second
+Example strategy that cycles through screen IDs and sends a text notification to each one.
 
-- It creates a timer
-- cycles through screen IDs in order (may need to import from dicemaster_central.config)
-- and then uses notification_builder to build a notification to send to that screen with that screen ID
-- publish the notification to screen_{id}_cmd
+Uses dice.timer for periodic callbacks and dice.screen for display.
 """
-from dicemaster_central.games.strategy import BaseStrategy
-from dicemaster_central.config import dice_config
-from dicemaster_central.utils.notification_builder import build_info_notification
-from dicemaster_central_msgs.msg import ScreenMediaCmd
+
+import os
+import json
+import tempfile
+
+from dice import screen, log, timer
+from dice.strategy import BaseStrategy
+
 
 class TestStrategy(BaseStrategy):
-    """Example strategy that sends notifications to screens in order every second."""
-    
     _strategy_name = "pipeline_test"
-    
-    def __init__(self, game_name: str, config_file: str, assets_path: str, verbose: bool = False):
-        super().__init__(game_name, config_file, assets_path, verbose)
-        
-        # Get available screen IDs from config
-        self.available_screen_ids = list(dice_config.screen_configs.keys())
-        self.get_logger().info(f"Available screen IDs: {self.available_screen_ids}")
-        
-        # Publishers for screen media commands (created as needed)
-        self.screen_publishers = {}
-        self.notification_timer = None
-        
-        # Message counter for generating different content
-        self.message_count = 0
-        
-        # Index for cycling through screen IDs in order
+
+    def __init__(self, game_name: str, config: dict, assets_path: str, **kwargs):
+        super().__init__(game_name, config, assets_path, **kwargs)
+        self.available_screen_ids = list(range(1, 7))
         self.current_screen_index = 0
-    
-    def _get_screen_publisher(self, screen_id: int):
-        """Get or create publisher for a specific screen ID"""
-        if screen_id not in self.screen_publishers:
-            topic_name = f'/screen_{screen_id}_cmd'
-            self.screen_publishers[screen_id] = self.create_publisher(
-                ScreenMediaCmd,
-                topic_name,
-                10
-            )
-            # self.get_logger().info(f"Created publisher for {topic_name}")
-        return self.screen_publishers[screen_id]
-    
+        self.message_count = 0
+        self._timer_id = None
+        self._temp_dir = tempfile.mkdtemp(prefix="dice_test_")
+
     def start_strategy(self):
-        """Start the strategy: create timer."""
-        # Create timer that fires every second
-        self.notification_timer = self.create_timer(0.1, self.send_random_notification)
-        self.get_logger().info("TestStrategy started - sending notifications to screens in order every second")
-    
+        self._timer_id = timer.set(0.1, self._send_notification)
+        log("TestStrategy started - sending notifications every 0.1s")
+
     def stop_strategy(self):
-        """Stop the strategy: destroy timer and publishers."""
-        if self.notification_timer:
-            self.destroy_timer(self.notification_timer)
-            self.notification_timer = None
-            
-        # Destroy all screen publishers
-        for screen_id, publisher in self.screen_publishers.items():
-            if publisher:
-                self.destroy_publisher(publisher)
-        self.screen_publishers.clear()
-            
-        self.get_logger().info("TestStrategy stopped")
-    
-    def send_random_notification(self):
-        """Timer callback to send a notification to screens in order."""
+        if self._timer_id is not None:
+            timer.cancel(self._timer_id)
+            self._timer_id = None
+        log("TestStrategy stopped")
+
+    def _send_notification(self):
         if not self.available_screen_ids:
-            self.get_logger().warn("No available screen IDs configured")
             return
-        
-        # Select the next screen ID in order
-        target_screen_id = self.available_screen_ids[self.current_screen_index]
+
+        target_id = self.available_screen_ids[self.current_screen_index]
         self.current_screen_index = (self.current_screen_index + 1) % len(self.available_screen_ids)
-        
         self.message_count += 1
-        notification_content = f"Test message #{self.message_count} to screen {target_screen_id}"
-        
-        try:
-            # Build notification using the updated notification builder
-            notification_msg = build_info_notification(notification_content, target_screen_id)
-            
-            # Get the appropriate publisher for this screen and publish
-            publisher = self._get_screen_publisher(target_screen_id)
-            publisher.publish(notification_msg)
-            
-            # self.get_logger().info(
-            #     f"Sent notification #{self.message_count} to screen {target_screen_id}: '{notification_content}'"
-            # )
-            
-        except Exception as e:
-            self.get_logger().error(f"Failed to send notification: {e}")
+
+        content = f"Test #{self.message_count} screen {target_id}"
+
+        # Build a simple text JSON file for the screen
+        text_data = {
+            "bg_color": "0x0000",
+            "texts": [{
+                "x_cursor": 40,
+                "y_cursor": 200,
+                "font_name": "tf",
+                "font_color": "0xFFFF",
+                "text": content,
+            }]
+        }
+        path = os.path.join(self._temp_dir, f"notif_{target_id}.json")
+        with open(path, 'w') as f:
+            json.dump(text_data, f)
+
+        screen.set_text(target_id, path)
