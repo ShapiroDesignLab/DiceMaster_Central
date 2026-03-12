@@ -3,6 +3,121 @@ import time
 from unittest.mock import MagicMock
 from dicemaster_central.hw.screen.bus_event_loop import BusEventLoop, Event, EventType
 
+# ---------------------------------------------------------------------------
+# Integration tests — require pydantic + Pillow (run on remote ROS machine)
+# ---------------------------------------------------------------------------
+
+def test_new_content_event_triggers_spi_send(tmp_path):
+    """Full path: enqueue NEW_CONTENT → loop processes → SPI send called."""
+    import json
+    from dicemaster_central_msgs.msg import ScreenMediaCmd
+    from dicemaster_central.constants import ContentType
+    from dicemaster_central.hw.screen.screen import Screen
+
+    cfg = {"bg_color": "0x0000", "texts": [{"x": 0, "y": 0, "font_id": 1,
+           "font_color": "0xFFFF", "text": "hello"}]}
+    p = tmp_path / "t.json"
+    p.write_text(json.dumps(cfg))
+
+    mock_spi = MagicMock()
+    node = MagicMock()
+    screen = Screen(node=node, screen_id=1)
+    screens = {1: screen}
+
+    loop = BusEventLoop(
+        bus_id=0, screens=screens, spi_device=mock_spi,
+        bus_min_interval_s=0.0, logger=MagicMock(),
+    )
+    loop.start()
+
+    msg = ScreenMediaCmd()
+    msg.screen_id = 1
+    msg.media_type = int(ContentType.TEXT)
+    msg.file_path = str(p)
+    loop.enqueue(Event(type=EventType.NEW_CONTENT, screen_id=1, payload=msg))
+
+    time.sleep(0.2)
+    loop.stop()
+
+    assert mock_spi.send.called, "SPI send should have been called after NEW_CONTENT event"
+
+
+def test_rotation_change_triggers_resend(tmp_path):
+    """ROTATION_CHANGED event causes re-encoded payload to be sent again."""
+    import json
+    from dicemaster_central_msgs.msg import ScreenMediaCmd
+    from dicemaster_central.constants import ContentType, Rotation
+    from dicemaster_central.hw.screen.screen import Screen
+
+    cfg = {"bg_color": "0x0000", "texts": [{"x": 0, "y": 0, "font_id": 1,
+           "font_color": "0xFFFF", "text": "rotate"}]}
+    p = tmp_path / "r.json"
+    p.write_text(json.dumps(cfg))
+
+    mock_spi = MagicMock()
+    node = MagicMock()
+    screen = Screen(node=node, screen_id=1)
+    screens = {1: screen}
+
+    loop = BusEventLoop(
+        bus_id=0, screens=screens, spi_device=mock_spi,
+        bus_min_interval_s=0.0, logger=MagicMock(),
+    )
+
+    msg = ScreenMediaCmd()
+    msg.screen_id = 1
+    msg.media_type = int(ContentType.TEXT)
+    msg.file_path = str(p)
+
+    loop.start()
+    loop.enqueue(Event(type=EventType.NEW_CONTENT, screen_id=1, payload=msg))
+    time.sleep(0.15)
+    send_count_after_content = mock_spi.send.call_count
+
+    loop.enqueue(Event(type=EventType.ROTATION_CHANGED, screen_id=1,
+                       payload=int(Rotation.ROTATION_90)))
+    time.sleep(0.15)
+    loop.stop()
+
+    assert mock_spi.send.call_count > send_count_after_content, \
+        "SPI send should be called again after ROTATION_CHANGED"
+
+
+def test_gif_frames_advance_at_deadline(tmp_path):
+    """GIF frames advance at the expected interval via the event loop timeout."""
+    from dicemaster_central.constants import GIF_FRAME_TIME
+    from dicemaster_central.hw.screen.screen import Screen
+
+    mock_spi = MagicMock()
+    node = MagicMock()
+    screen = Screen(node=node, screen_id=1)
+
+    # Inject a fake 2-frame GIF directly (bypass file I/O)
+    fake_frame = MagicMock()
+    fake_frame.payload = b'\x00' * 16
+    fake_frame.rotation = 0
+    fake_frame.encode = MagicMock()
+    screen.gif_messages = [[fake_frame], [fake_frame]]
+    screen.gif_active = True
+    screen.gif_frame_index = 0
+    screen.gif_rotation = 0
+    screen.next_frame_time = time.monotonic()  # due immediately
+
+    screens = {1: screen}
+    loop = BusEventLoop(
+        bus_id=0, screens=screens, spi_device=mock_spi,
+        bus_min_interval_s=0.0, logger=MagicMock(),
+    )
+    loop.start()
+
+    # Wait for slightly more than two GIF frame periods
+    time.sleep(GIF_FRAME_TIME * 2.5)
+    loop.stop()
+
+    # At least 2 frames should have been sent
+    assert mock_spi.send.call_count >= 2, \
+        f"Expected >= 2 SPI sends for GIF frames, got {mock_spi.send.call_count}"
+
 
 def _make_loop():
     """Build a BusEventLoop with mocked SPI and screens."""
