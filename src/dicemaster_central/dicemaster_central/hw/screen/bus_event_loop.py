@@ -10,11 +10,11 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from dicemaster_central.constants import ContentType, GIF_FRAME_TIME, Rotation
+from dicemaster_central.constants import GIF_FRAME_TIME, Rotation
 
 if TYPE_CHECKING:
     from dicemaster_central.hw.screen.screen import Screen
@@ -82,6 +82,10 @@ class BusEventLoop:
         self.enqueue(Event(type=EventType.SHUTDOWN, screen_id=0))
         if self._thread:
             self._thread.join(timeout=3.0)
+            if self._thread.is_alive():
+                self.logger.error(
+                    f"BusEventLoop bus {self.bus_id}: thread did not stop within 3s"
+                )
 
     # ------------------------------------------------------------------
     # Event loop (bus thread only)
@@ -110,11 +114,10 @@ class BusEventLoop:
                     self._handle_rotation(ev)
 
             # Advance GIF frames whose deadline has passed
-            now = time.monotonic()
             for screen in self.screens.values():
-                if screen.gif_active and now >= screen.next_frame_time:
+                if screen.gif_active and time.monotonic() >= screen.next_frame_time:
                     self._send_gif_frame(screen)
-                    screen.next_frame_time = now + GIF_FRAME_TIME
+                    screen.next_frame_time = time.monotonic() + GIF_FRAME_TIME
 
     def _next_gif_deadline(self) -> Optional[float]:
         """Return seconds until earliest GIF frame deadline, or None if no active GIFs."""
