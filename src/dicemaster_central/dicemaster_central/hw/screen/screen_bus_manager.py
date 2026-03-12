@@ -77,7 +77,8 @@ class ScreenBusManager(Node):
 
     def stop(self) -> None:
         self.event_loop.stop()
-        del self.spi_device
+        if hasattr(self, 'spi_device'):
+            del self.spi_device
         self.get_logger().info(f"ScreenBusManager stopped for bus {self.bus_id}")
 
     def destroy_node(self) -> None:
@@ -104,7 +105,7 @@ class ScreenBusManager(Node):
         self.event_loop.enqueue(Event(
             type=EventType.ROTATION_CHANGED,
             screen_id=msg.screen_id,
-            payload=msg.rotation,
+            payload=msg.rotation,  # raw int; BusEventLoop wraps with Rotation(...)
         ))
 
 
