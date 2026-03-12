@@ -10,7 +10,7 @@ screen_configs: dict of id -> ScreenConfig instances
 import os
 from typing import Dict
 from dataclasses import dataclass
-from dicemaster_central.constants import Rotation
+from dicemaster_central.constants import Rotation, GIF_FRAME_TIME
 
 @dataclass
 class GlobalScreenConfig:
@@ -31,6 +31,7 @@ class SPIConfig:
 class SPIBusConfig:
     bus_id: int
     use_dev: int = 0
+    bus_min_interval_s: float = GIF_FRAME_TIME  # rate limit floor between SPI sends
 
 @dataclass
 class ScreenConfig:
