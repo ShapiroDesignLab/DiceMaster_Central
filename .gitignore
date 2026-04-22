@@ -26,3 +26,5 @@ rviz/data/
 # Claude
 CLAUDE.md
 .claude/
+# Converted game output
+src/dicemaster_central/examples/games/converted/
