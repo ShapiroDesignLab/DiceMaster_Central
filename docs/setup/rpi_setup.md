@@ -47,19 +47,7 @@ cd DiceMaster/DiceMaster_Central
 
 This repo is a self-contained colcon workspace. Packages live in `src/`, build artifacts go to `build/`/`install/`/`log/` (gitignored).
 
-Alternatively, set up the workspace manually:
-```bash
-cd DiceMaster/DiceMaster_ROS_workspace
-mkdir -p src
-ln -s ../../DiceMaster_Central src/dicemaster_central
-ln -s ../../DiceMaster_Central/dicemaster_central_msgs src/dicemaster_central_msgs
-
-# Source ROS
-source /home/dice/ros2_humble/install/setup.bash
-
-# Build
-colcon build --symlink-install
-```
+This workspace includes `colcon.defaults.json` which automatically applies `--symlink-install` and skips packages that require a display (`rviz_imu_plugin`). You do not need to pass these flags manually.
 
 ## Install Custom py-spidev
 
@@ -74,8 +62,8 @@ pip install -e . --break-system-packages
 ## Install Python Dependencies
 
 ```bash
-cd ~/DiceMaster/DiceMaster_Central/dicemaster_central
-pip install -r requirements.txt --break-system-packages
+cd ~/DiceMaster/DiceMaster_Central
+pip install -r src/dicemaster_central/requirements.txt --break-system-packages
 ```
 
 ## Configure Auto-Start

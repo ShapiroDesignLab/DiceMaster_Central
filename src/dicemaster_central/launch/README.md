@@ -1,86 +1,34 @@
-# DiceMaster Configuration Launch System
+# Launch Files
 
-This directory contains launch files for the DiceMaster configuration system.
+This directory contains ROS2 launch files for `dicemaster_central`.
 
 ## Files
 
-- `launch_config_pub.py`: ROS2 launch file for the config publisher
-- `launch_config_simple.py`: Simple Python launcher script
+| File | Purpose |
+|---|---|
+| `dicemaster.launch.py` | Top-level entry point — includes all subsystem launch files in order |
+| `imu.launch.py` | Starts IMU hardware node, Madgwick filter, and motion detector |
+| `chassis.launch.py` | Starts chassis node (orientation math, game coordination) |
+| `screens.launch.py` | Dynamically spawns one `screen_bus_manager` node per active SPI bus |
+| `managers.launch.py` | Starts the game manager node |
+| `remote_logger.launch.py` | Optional remote logging sink for development/debugging |
 
 ## Usage
 
-### Simple Launcher (Recommended)
-
 ```bash
-# Source ROS environment first
-cd /home/dice/DiceMaster/DiceMaster_ROS_workspace && source prepare.sh
+# Source ROS2 and workspace overlay first
+source ~/ros2_humble/install/setup.bash
+source install/setup.bash
 
-# Validate configuration only
-python3 launch/launch_config_simple.py --validate-only
+# Launch everything
+ros2 launch dicemaster_central dicemaster.launch.py
 
-# Launch publisher with default config
-python3 launch/launch_config_simple.py
-
-# Launch publisher with custom config file
-python3 launch/launch_config_simple.py --config-file /path/to/custom.yaml
-
-# Launch with validation only using custom config
-python3 launch/launch_config_simple.py --validate-only --config-file /path/to/custom.yaml
+# Or launch a subsystem individually
+ros2 launch dicemaster_central imu.launch.py
 ```
 
-### ROS2 Launch File
+## Notes
 
-```bash
-# Launch with default config
-ros2 launch DiceMaster_Central launch_config_pub.py
-
-# Launch with custom config file
-ros2 launch DiceMaster_Central launch_config_pub.py config_file:=/path/to/custom.yaml
-
-# Validation only
-ros2 launch DiceMaster_Central launch_config_pub.py validate_only:=true
-```
-
-## Configuration File
-
-The launcher looks for configuration files in this order:
-
-1. File specified by `--config-file` argument
-2. File specified by `DICE_CONFIG_FILE` environment variable
-3. Default: `resource/config.yaml`
-
-## Examples
-
-### Basic Usage
-```bash
-# Test configuration
-./launch_config_simple.py --validate-only
-
-# Run publisher
-./launch_config_simple.py
-```
-
-### With Custom Config
-```bash
-# Test custom config
-./launch_config_simple.py --validate-only --config-file /path/to/test.yaml
-
-# Run publisher with custom config
-./launch_config_simple.py --config-file /path/to/production.yaml
-```
-
-## Environment Variables
-
-- `DICE_CONFIG_FILE`: Path to configuration file (overrides default)
-- `DICE_VERBOSE`: Enable verbose logging (set to any value)
-
-## Testing
-
-The configuration system includes comprehensive tests:
-
-```bash
-# Run config tests
-cd /home/dice/DiceMaster/DiceMaster_ROS_workspace && source prepare.sh
-cd /home/dice/DiceMaster/DiceMaster_Central
-python3 tests/test_config.py manual
-```
+- This workspace's `colcon.defaults.json` applies `--symlink-install` automatically, so launch file edits take effect without rebuilding.
+- Python node changes also take effect without rebuilding (symlink install).
+- Message definition or `setup.py` changes require a full `colcon build`.

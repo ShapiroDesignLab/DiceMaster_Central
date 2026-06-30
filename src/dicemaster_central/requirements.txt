@@ -1,9 +1,9 @@
-python3-numpy
-python3-smbus2
-python3-pillow
-python3-spidev
-python3-opencv
-python3-openssl
-python3-asyncio
-python3-scipy
-python3-colcon-common-extensions
+# Install with: pip install -r requirements.txt --break-system-packages
+numpy
+smbus2
+Pillow
+spidev
+opencv-python
+pyOpenSSL
+scipy
+colcon-common-extensions

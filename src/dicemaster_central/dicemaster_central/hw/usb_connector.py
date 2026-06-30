@@ -1,10 +1,11 @@
 """
-U-M Shapiro Design Lab
-Daniel Hou @2024
+usb_connector.py — USB connection monitoring node (stub/hardware-only).
 
-ROS2 node for USB connection monitoring.
-Monitors GPIO 13 voltage level and publishes USB connection status to /hw/usb_connected topic.
-Uses GPIO interrupts for efficient resource usage.
+Monitors GPIO 13 voltage level via RPi.GPIO interrupts and publishes USB connection
+status to /hw/usb_connected. Falls back to simulation mode (alternating state) when
+RPi.GPIO is unavailable. Not included in any launch file — for hardware debugging only.
+
+U-M Shapiro Design Lab — Daniel Hou @2024
 """
 
 import rclpy

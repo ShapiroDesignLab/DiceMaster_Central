@@ -1,9 +1,10 @@
 """
-U-M Shapiro Design Lab
-Daniel Hou @2024
+energy.py — Battery/power monitoring node stub.
 
-ROS2 node for battery level monitoring.
-Publishes battery level percentage to /hw/battery_level topic.
+NOT IMPLEMENTED. This node is a placeholder for future power-level reporting.
+It publishes a constant 0.0 battery level and does not interface with hardware.
+
+U-M Shapiro Design Lab — Daniel Hou @2024
 """
 
 import rclpy

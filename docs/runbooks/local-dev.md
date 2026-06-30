@@ -35,7 +35,7 @@ Add this to `~/.bashrc` to avoid repeating it each session.
 ### 3. Install Python dependencies
 
 ```bash
-pip install -r src/dicemaster_central/dicemaster_central/requirements.txt
+pip install -r src/dicemaster_central/requirements.txt --break-system-packages
 ```
 
 ### 4. Build the workspace

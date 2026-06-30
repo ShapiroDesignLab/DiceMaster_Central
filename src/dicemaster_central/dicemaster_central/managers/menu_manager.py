@@ -1,14 +1,10 @@
 """
-The default menu of the dice
+menu_manager.py — Game selection menu manager. INCOMPLETE.
 
-Features:
-1. Switching strategies
-2. Manual calibration of the IMU
-3. Battery level (requires supported battery)
-4. Shutdown
+This node is a work-in-progress and is not included in any launch file.
+It is not safe to use in production.
 
-How it works:
-- Loads default menu items from menu tree
+Intended features: strategy switching, IMU calibration, battery status, shutdown.
 """
 
 class ActionItem:
