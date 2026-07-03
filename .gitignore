@@ -23,8 +23,21 @@ rviz/data/
 # Secrets
 .env
 
-# Claude
+# AI agent / assistant files
+AGENTS.md
 CLAUDE.md
+CLAUDE.local.md
 .claude/
+GEMINI.md
+.gemini/
+.cursor/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.aider*
+.windsurfrules
+.windsurf/
+.continue/
+.github/copilot-instructions.md
 # Converted game output
 src/dicemaster_central/examples/games/converted/
