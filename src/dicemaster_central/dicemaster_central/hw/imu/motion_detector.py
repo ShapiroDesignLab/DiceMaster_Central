@@ -91,7 +91,7 @@ class MotionDetectorNode(Node):
         gyro_mean = np.mean(recent_gyro_magnitudes)
         gyro_shake = gyro_mean > self.shake_gyro_threshold
         
-        print("Shake vals:", gyro_shake, accel_shake)
+        self.get_logger().debug(f"Shake vals: gyro_shake={gyro_shake}, accel_shake={accel_shake}")
         # Shaking detected if either acceleration variance is high or gyro activity is high
         return bool(accel_shake or gyro_shake)
     

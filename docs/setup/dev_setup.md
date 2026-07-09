@@ -2,7 +2,55 @@
 
 ## Remote Development
 
-<!-- TODO: Add remote development setup (SSH, VS Code remote, etc.) -->
+The Raspberry Pi (`dice1`) is the only machine with the real IMU, SPI buses, and
+screens. The normal loop is: **edit locally → push → pull on the Pi → test on the
+Pi.** Because the workspace is built with `--symlink-install`, Python-only edits
+need no rebuild — only `.msg`/`.srv`/`setup.py`/C++ changes do.
+
+### Prerequisites
+
+- SSH access to the Pi. Add a host alias to `~/.ssh/config` so `ssh dice1` works:
+
+  ```
+  Host dice1
+      HostName <pi-address-or-zerotier-ip>
+      User dice
+  ```
+
+- The Pi already has ROS2 Humble at `~/ros2_humble/` and the workspace cloned at
+  `~/DiceMaster/` with submodules, previously built with `--symlink-install`.
+
+### Everyday loop
+
+```bash
+# 1. Edit locally on macOS, then commit & push from the submodule
+git add <files> && git commit -m "..." && git push
+
+# 2. Pull on the Pi (per submodule you changed)
+ssh dice1 'cd ~/DiceMaster/DiceMaster_Central && git pull'
+
+# 3. Rebuild ONLY if a .msg/.srv/setup.py/C++ file changed (see table below)
+ssh dice1 'cd ~/DiceMaster/DiceMaster_Central && \
+  source ~/ros2_humble/install/setup.bash && colcon build --symlink-install'
+
+# 4. Run tests on the Pi
+ssh dice1 'cd ~/DiceMaster/DiceMaster_Central && python3 -m pytest src/dicemaster_central/tests/'
+
+# 5. Restart the running system
+ssh dice1 'sudo systemctl restart dicemaster'   # or relaunch manually — see docs/runbooks/deploy.md
+```
+
+For the full deploy/restart/verify procedure (systemd, expected node list,
+troubleshooting) see `docs/runbooks/deploy.md`.
+
+### Tips
+
+- Run long-lived launches inside `tmux`/`screen` on the Pi so they survive the
+  SSH session closing.
+- VS Code Remote-SSH works against `dice1` if you want to edit and run in one
+  place instead of the push/pull loop.
+- Keep the local checkout as the source of truth; avoid editing directly on the
+  Pi so history stays clean.
 
 ## Running Tests
 
